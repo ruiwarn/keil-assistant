@@ -1,6 +1,19 @@
 # Change Log
 
-All notable changes to the "keil-assistant" extension will be documented in this file.
+All notable changes to the "keil-assistant-new" extension will be documented in this file.
+
+## [2.0.0] - 2025-04-16
+
+- **Note:** This project is now maintained by a new team. Development continues from this version onwards.
+- Updated project name to "keil-assistant-new" to reflect new ownership
+- Updated VSCode engine compatibility to support latest versions
+- Initial setup for future improvements including:
+  - Modernized codebase
+  - Improved error handling
+  - Enhanced performance
+- Removed outdated dependencies and configurations
+
+***
 
 ## [v1.7.1]
 - Fixed: can't use shortcut key

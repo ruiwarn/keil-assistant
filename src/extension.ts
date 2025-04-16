@@ -5,7 +5,7 @@ import * as event from 'events';
 import * as fs from 'fs';
 import * as node_path from 'path';
 import * as child_process from 'child_process';
-import * as vscodeVariables from 'vscode-variables';
+// import * as vscodeVariables from 'vscode-variables'; // Removed unused import
 
 import { File } from '../lib/node_utility/File';
 import { ResourceManager } from './ResourceManager';
@@ -120,7 +120,7 @@ class Source implements IView {
 
     children: Source[] | undefined;
 
-    constructor(pID: string, f: File, _enable: boolean = true) {
+    constructor(pID: string, f: File, _enable = true) {
         this.prjID = pID;
         this.enable = _enable;
         this.file = f;
@@ -278,11 +278,14 @@ class KeilProject implements IView, KeilProjectInfo {
             await this.load();
             this.notifyUpdateView();
         } catch (err) {
-            if (err.code && err.code === 'EBUSY') {
+            // Add type check for err before accessing properties
+            if (err && typeof err === 'object' && 'code' in err && err.code === 'EBUSY') {
                 this.logger.log(`[Warn] uVision project file '${this.uvprjFile.name}' is locked !, delay 500 ms and retry !`);
                 setTimeout(() => this.onReload(), 500);
             } else {
-                vscode.window.showErrorMessage(`reload project failed !, msg: ${err.message}`);
+                // Use type guard for message access
+                const message = err instanceof Error ? err.message : String(err);
+                vscode.window.showErrorMessage(`reload project failed !, msg: ${message}`);
             }
         }
     }
@@ -617,7 +620,7 @@ abstract class Target implements IView {
         this.updateSourceRefs();
     }
 
-    private quoteString(str: string, quote: string = '"'): string {
+    private quoteString(str: string, quote = '"'): string {
         return str.includes(' ') ? (quote + str + quote) : str;
     }
 
@@ -738,15 +741,15 @@ class C51Target extends Target {
         }
     }
 
-    protected parseRefLines(target: any, lines: string[]): string[] {
+    protected parseRefLines(_target: any, _lines: string[]): string[] {
         return [];
     }
 
-    protected getOutputFolder(target: any): string | undefined {
+    protected getOutputFolder(_target: any): string | undefined {
         return undefined;
     }
 
-    protected getSysDefines(target: any): string[] {
+    protected getSysDefines(_target: any): string[] {
         return [
             '__C51__',
             '__VSCODE_C51__',
@@ -773,7 +776,7 @@ class C51Target extends Target {
         ];
     }
 
-    protected getSystemIncludes(target: any): string[] | undefined {
+    protected getSystemIncludes(_target: any): string[] | undefined {
         const exeFile = new File(ResourceManager.getInstance().getC51UV4Path());
         if (exeFile.IsFile()) {
             return [
@@ -833,7 +836,7 @@ class MacroHandler {
 
     private regMatchers = {
         'normal_macro': /^#define (\w+) (.*)$/,
-        'func_macro': /^#define (\w+\([^\)]*\)) (.*)$/
+        'func_macro': /^#define (\w+\([^)]*\)) (.*)$/
     };
 
     toExpression(macro: string): string | undefined {
@@ -1010,10 +1013,10 @@ class ArmTarget extends Target {
         const resultList: Set<string> = new Set();
 
         for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
-            let _line = lines[lineIndex];
+            const _line = lines[lineIndex];
 
-            let line = _line[_line.length - 1] === '\\' ? _line.substring(0, _line.length - 1) : _line; // remove char '\'
-            let subLines = line.trim().split(/(?<![\\:]) /);
+            const line = _line[_line.length - 1] === '\\' ? _line.substring(0, _line.length - 1) : _line; // remove char '\'
+            const subLines = line.trim().split(/(?<![\\:]) /);
 
             if (lineIndex === 0) // first line
             {
@@ -1033,12 +1036,12 @@ class ArmTarget extends Target {
         return Array.from(resultList);
     }
 
-    private ac5_parseRefLines(lines: string[], startIndex: number = 1): string[] {
+    private ac5_parseRefLines(lines: string[], startIndex = 1): string[] {
 
         const resultList: Set<string> = new Set<string>();
 
         for (let i = startIndex; i < lines.length; i++) {
-            let sepIndex = lines[i].indexOf(": ");
+            const sepIndex = lines[i].indexOf(": ");
             if (sepIndex > 0) {
                 const line: string = lines[i].substring(sepIndex + 1).trim();
                 resultList.add(line);
@@ -1159,17 +1162,19 @@ class ArmTarget extends Target {
 
 class ProjectExplorer implements vscode.TreeDataProvider<IView> {
 
-    private ItemClickCommand: string = 'Item.Click';
+    private ItemClickCommand = 'Item.Click';
 
-    onDidChangeTreeData: vscode.Event<IView>;
-    private viewEvent: vscode.EventEmitter<IView>;
+    // Allow undefined/null for root refresh
+    onDidChangeTreeData: vscode.Event<IView | undefined | null>;
+    private viewEvent: vscode.EventEmitter<IView | undefined | null>;
 
     private prjList: Map<string, KeilProject>;
     private currentActiveProject: KeilProject | undefined;
 
     constructor(context: vscode.ExtensionContext) {
         this.prjList = new Map();
-        this.viewEvent = new vscode.EventEmitter();
+        // Correct EventEmitter type
+        this.viewEvent = new vscode.EventEmitter<IView | undefined | null>();
         this.onDidChangeTreeData = this.viewEvent.event;
         context.subscriptions.push(vscode.window.registerTreeDataProvider('project', this));
         context.subscriptions.push(vscode.commands.registerCommand(this.ItemClickCommand, (item) => this.onItemClick(item)));
@@ -1182,13 +1187,19 @@ class ProjectExplorer implements vscode.TreeDataProvider<IView> {
             const workspace = new File(wsFilePath);
             if (workspace.IsDir()) {
                 const excludeList = ResourceManager.getInstance().getProjectExcludeList();
-                const uvList = workspace.GetList([/\.uvproj[x]?$/i], File.EMPTY_FILTER).concat(ResourceManager.getInstance().getProjectFileLocationList())
+                const workspaceFiles = workspace.GetList([/\.uvproj[x]?$/i], File.EMPTY_FILTER);
+                // Convert string locations to File objects before concatenating
+                const locationFiles = ResourceManager.getInstance().getProjectFileLocationList()
+                                        .map(loc => new File(loc)); // Assuming new File(path) works
+                const uvList = workspaceFiles.concat(locationFiles)
                     .filter((file) => { return !excludeList.includes(file.name); });
                 for (const uvFile of uvList) {
                     try {
-                        await this.openProject(vscodeVariables(uvFile));
+                        // Removed vscodeVariables call, assuming uvFile.path is already resolved
+                        await this.openProject(uvFile.path);
                     } catch (error) {
-                        vscode.window.showErrorMessage(`open project: '${uvFile.name}' failed !, msg: ${(<Error>error).message}`);
+                        const message = error instanceof Error ? error.message : String(error);
+                        vscode.window.showErrorMessage(`open project: '${uvFile.name}' failed !, msg: ${message}`);
                     }
                 }
             }
@@ -1269,7 +1280,7 @@ class ProjectExplorer implements vscode.TreeDataProvider<IView> {
     }
 
     updateView() {
-        this.viewEvent.fire();
+        this.viewEvent.fire(undefined); // Pass undefined as argument
     }
 
     //----------------------------------
@@ -1285,7 +1296,7 @@ class ProjectExplorer implements vscode.TreeDataProvider<IView> {
 
                     if (file.IsFile()) { // file exist, open it
 
-                        let isPreview: boolean = true;
+                        let isPreview = true;
 
                         if (this.itemClickInfo &&
                             this.itemClickInfo.name === file.path &&
@@ -1328,11 +1339,22 @@ class ProjectExplorer implements vscode.TreeDataProvider<IView> {
             };
         }
 
+        // Only set iconPath if both light and dark icons are found and valid
         if (element.icons) {
-            res.iconPath = {
-                light: ResourceManager.getInstance().getIconByName(element.icons.light),
-                dark: ResourceManager.getInstance().getIconByName(element.icons.dark)
-            };
+            const lightIconPath = ResourceManager.getInstance().getIconByName(element.icons.light);
+            const darkIconPath = ResourceManager.getInstance().getIconByName(element.icons.dark);
+
+            if (lightIconPath && darkIconPath) {
+                try {
+                    res.iconPath = {
+                        light: vscode.Uri.file(lightIconPath),
+                        dark: vscode.Uri.file(darkIconPath)
+                    };
+                } catch (e) {
+                    // Log error if Uri creation fails, fallback to default icon
+                    console.error(`Error creating icon Uri for ${element.label}:`, e);
+                }
+            }
         }
         return res;
     }

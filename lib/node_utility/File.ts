@@ -31,95 +31,82 @@ export class File {
     }
 
     static ToUri(path: string): string {
-        return 'file://' + this.ToNoProtocolUri(path);
+        // Ensure drive letter is handled correctly for file URIs on Windows
+        let uriPath = this.ToUnixPath(path);
+        if (uriPath.startsWith('/')) {
+            uriPath = uriPath.substring(1); // Remove leading slash if present
+        }
+        // Encode path components, especially spaces and special characters
+        uriPath = uriPath.split('/').map(encodeURIComponent).join('/');
+        // Add the file scheme and ensure three slashes for absolute paths
+        if (!uriPath.startsWith('/')) {
+             uriPath = '/' + uriPath;
+        }
+        return 'file://' + uriPath;
     }
 
     static ToNoProtocolUri(path: string): string {
-        return '/' + encodeURIComponent(path.replace(/\\/g, '/'));
+        // This might not be standard or necessary, consider using ToUri directly
+        let uriPath = this.ToUnixPath(path);
+         if (uriPath.startsWith('/')) {
+            uriPath = uriPath.substring(1); // Remove leading slash if present
+        }
+        uriPath = uriPath.split('/').map(encodeURIComponent).join('/');
+        if (!uriPath.startsWith('/')) {
+             uriPath = '/' + uriPath;
+        }
+        return uriPath; // Return path suitable for URI without scheme
     }
 
-    // c:/abcd/../a -> c:\abcd\..\a
     static ToLocalPath(path: string): string {
-
         const res = File.ToUnixPath(path);
-
         if (File.sep === '\\') {
             return res.replace(/\//g, File.sep);
         }
-
         return res;
     }
-    /* 
-        // ./././aaaa/././././bbbb => ./aaaa/bbbb
-        private static DelRepeatedPath(_path: string) {
-    
-            let path = _path;
-    
-            // delete '..' of path
-            let parts = path.split('/');
-            let index = -1;
-            while ((index = parts.indexOf('..')) > 0) {
-                parts.splice(index - 1, 2);
-            }
-    
-            // delete '.' of path
-            path = parts.join('/').replace(/\/\.(?=\/)/g, '');
-    
-            return path;
-        }
-     */
+
     private static _match(str: string, isInverter: boolean, regList: RegExp[]): boolean {
-
         let isMatch: boolean = false;
-
         for (let reg of regList) {
             if (reg.test(str)) {
                 isMatch = true;
                 break;
             }
         }
-
         if (isInverter) {
             isMatch = !isMatch;
         }
-
         return isMatch;
     }
 
     private static _filter(fList: File[], isInverter: boolean, fileFilter?: RegExp[], dirFilter?: RegExp[]): File[] {
-
         const res: File[] = [];
-
+        // Filter files
+        const files = fList.filter(f => f.IsFile()); // Assuming IsFile exists and works
         if (fileFilter) {
-            fList.forEach(f => {
-                if (f.IsFile() && this._match(f.name, isInverter, fileFilter)) {
+            files.forEach(f => {
+                if (this._match(f.name, isInverter, fileFilter)) {
                     res.push(f);
                 }
             });
         } else {
-            fList.forEach(f => {
-                if (f.IsFile()) {
-                    res.push(f);
-                }
-            });
+            res.push(...files); // Add all files if no filter
         }
-
+        // Filter directories
+        const dirs = fList.filter(f => f.IsDir()); // Assuming IsDir exists and works
         if (dirFilter) {
-            fList.forEach(f => {
-                if (f.IsDir() && this._match(f.name, isInverter, dirFilter)) {
+            dirs.forEach(f => {
+                if (this._match(f.name, isInverter, dirFilter)) {
                     res.push(f);
                 }
             });
         } else {
-            fList.forEach(f => {
-                if (f.IsDir()) {
-                    res.push(f);
-                }
-            });
+            res.push(...dirs); // Add all dirs if no filter
         }
-
         return res;
     }
+
 
     static Filter(fList: File[], fileFilter?: RegExp[], dirFilter?: RegExp[]): File[] {
         return this._filter(fList, false, fileFilter, dirFilter);
@@ -130,7 +117,7 @@ export class File {
     }
 
     private GetNoSuffixName(name: string): string {
-        const nList = this.name.split('.');
+        const nList = name.split('.'); // Use the passed name argument
         if (nList.length > 1) {
             nList.pop();
             return nList.join('.');
@@ -140,144 +127,162 @@ export class File {
     }
 
     private _CopyRetainDir(baseDir: File, file: File) {
-
         const relativePath = baseDir.ToRelativePath(file.dir);
-
         if (relativePath) {
-
-            const dir = File.fromArray([this.path, relativePath.replace(/\//g, File.sep)]);
-            if (!dir.IsDir()) {
-                this.CreateDir(true);
-            }
-            fs.copyFileSync(file.path, dir.path + File.sep + file.name);
+            const targetDir = File.fromArray([this.path, relativePath.replace(/\//g, File.sep)]);
+            targetDir.CreateDir(true); // Use sync CreateDir here or make this method async
+            fs.copyFileSync(file.path, targetDir.path + File.sep + file.name);
         }
     }
 
-    /**
-     * example: this.path: 'd:\app\abc\.', absPath: 'd:\app\abc\.\def\a.c', result: '.\def\a.c'
-    */
     ToRelativePath(abspath: string, hasPrefix: boolean = true): string | undefined {
-
         if (!Path.isAbsolute(abspath)) {
+            // Consider throwing an error or returning a specific value if input is not absolute
             return undefined;
         }
-
         const rePath = Path.relative(this.path, abspath);
-        if (Path.isAbsolute(rePath)) {
+        if (Path.isAbsolute(rePath) || rePath.startsWith('..')) {
+            // Path is outside the base directory, return undefined or handle as needed
             return undefined;
         }
-
         return hasPrefix ? (`.${File.sep}${rePath}`) : rePath;
     }
 
-    //----------------------------------------------------
+
+    // --- Synchronous Methods ---
 
     CreateDir(recursive: boolean = false): void {
         if (!this.IsDir()) {
-            if (recursive) {
-                let list = this.path.split(Path.sep);
-                let f: File;
-                if (list.length > 0) {
-                    let dir: string = list[0];
-                    for (let i = 0; i < list.length;) {
-                        f = new File(dir);
-                        if (!f.IsDir()) {
-                            fs.mkdirSync(f.path);
-                        }
-                        dir += ++i < list.length ? (Path.sep + list[i]) : '';
-                    }
-                    return;
-                }
-                return;
+             // Use fs.mkdirSync which handles recursive creation directly
+            try {
+                fs.mkdirSync(this.path, { recursive: recursive });
+            } catch (error) {
+                // Handle potential errors, e.g., permissions
+                console.error(`Failed to create directory ${this.path}:`, error);
+                // Optionally re-throw or handle differently
             }
-            fs.mkdirSync(this.path);
         }
     }
+
 
     GetList(fileFilter?: RegExp[], dirFilter?: RegExp[]): File[] {
         let list: File[] = [];
-        fs.readdirSync(this.path).forEach((str: string) => {
-            if (str !== '.' && str !== '..') {
-                const f = new File(this.path + Path.sep + str);
-                if (f.IsDir()) {
-                    if (dirFilter) {
-                        for (let reg of dirFilter) {
-                            if (reg.test(f.name)) {
+        try {
+            fs.readdirSync(this.path).forEach((str: string) => {
+                if (str !== '.' && str !== '..') {
+                    const f = new File(Path.join(this.path, str)); // Use Path.join
+                    // Check if f exists before calling IsDir/IsFile
+                    if (f.IsExist()) {
+                        if (f.IsDir()) {
+                            if (!dirFilter || dirFilter.some(reg => reg.test(f.name))) {
                                 list.push(f);
-                                break;
+                            }
+                        } else { // It's a file
+                            if (!fileFilter || fileFilter.some(reg => reg.test(f.name))) {
+                                list.push(f);
                             }
                         }
-                    } else {
-                        list.push(f);
-                    }
-                } else {
-                    if (fileFilter) {
-                        for (let reg of fileFilter) {
-                            if (reg.test(f.name)) {
-                                list.push(f);
-                                break;
-                            }
-                        }
-                    } else {
-                        list.push(f);
                     }
                 }
-            }
-        });
+            });
+        } catch (error) {
+            console.error(`Failed to read directory ${this.path}:`, error);
+            // Return empty list or re-throw
+        }
         return list;
     }
 
+
     GetAll(fileFilter?: RegExp[], dirFilter?: RegExp[]): File[] {
         let res: File[] = [];
+        let fStack: File[] = [];
 
-        let fStack: File[] = this.GetList(fileFilter);
-        let f: File;
-
-        while (fStack.length > 0) {
-            f = <File>fStack.pop();
-            if (f.IsDir()) {
-                fStack = fStack.concat(f.GetList(fileFilter));
-            }
-            res.push(f);
+        try {
+            fStack = this.GetList(fileFilter, dirFilter); // Start with top-level filtered list
+        } catch (error) {
+             console.error(`Failed initial GetList in GetAll for ${this.path}:`, error);
+             return []; // Return empty if initial read fails
         }
 
-        return File.Filter(res, undefined, dirFilter);
+        const processedDirs = new Set<string>(); // Avoid infinite loops with symlinks
+        processedDirs.add(this.path);
+
+        while (fStack.length > 0) {
+            const f = fStack.pop()!; // Non-null assertion as we check length > 0
+            res.push(f); // Add the file/dir itself
+
+            if (f.IsDir() && !processedDirs.has(f.path)) {
+                 processedDirs.add(f.path);
+                try {
+                    // Get unfiltered list from subdirectory and filter later if needed
+                    const subList = f.GetList(fileFilter, dirFilter);
+                    fStack.push(...subList); // Add sub-items to the stack
+                } catch (error) {
+                     console.error(`Failed GetList in GetAll for subdirectory ${f.path}:`, error);
+                     // Continue with other items
+                }
+            }
+        }
+        // The filtering is now done within GetList calls, so no need for File.Filter here
+        return res;
     }
+
 
     CopyRetainDir(baseDir: File, file: File) {
         this._CopyRetainDir(baseDir, file);
     }
 
     CopyFile(file: File) {
-        fs.copyFileSync(file.path, this.path + File.sep + file.name);
+        try {
+            fs.copyFileSync(file.path, Path.join(this.path, file.name)); // Use Path.join
+        } catch (error) {
+             console.error(`Failed to copy file ${file.path} to ${this.path}:`, error);
+        }
     }
 
     CopyList(dir: File, fileFilter?: RegExp[], dirFilter?: RegExp[]) {
-        let fList = dir.GetList(fileFilter, dirFilter);
-        fList.forEach(f => {
-            if (f.IsFile()) {
-                this.CopyRetainDir(dir, f);
-            }
-        });
+        try {
+            let fList = dir.GetList(fileFilter, dirFilter);
+            fList.forEach(f => {
+                if (f.IsFile()) {
+                    this.CopyRetainDir(dir, f);
+                }
+            });
+        } catch (error) {
+             console.error(`Failed CopyList from ${dir.path} to ${this.path}:`, error);
+        }
     }
 
     CopyAll(dir: File, fileFilter?: RegExp[], dirFilter?: RegExp[]) {
-        let fList = dir.GetAll(fileFilter, dirFilter);
-        fList.forEach(f => {
-            if (f.IsFile()) {
-                this.CopyRetainDir(dir, f);
-            }
-        });
+         try {
+            let fList = dir.GetAll(fileFilter, dirFilter);
+            fList.forEach(f => {
+                // Ensure we only copy files, GetAll might return directories too depending on filter
+                if (f.IsFile()) {
+                    this.CopyRetainDir(dir, f);
+                }
+            });
+         } catch (error) {
+              console.error(`Failed CopyAll from ${dir.path} to ${this.path}:`, error);
+         }
     }
 
-    //-------------------------------------------------
 
-    Read(encoding?: string): string {
-        return fs.readFileSync(this.path, encoding || 'utf8');
+    Read(encoding: BufferEncoding = 'utf8'): string { // Default encoding
+        try {
+            return fs.readFileSync(this.path, { encoding: encoding });
+        } catch (error) {
+             console.error(`Failed to read file ${this.path}:`, error);
+             return ''; // Return empty string or throw error
+        }
     }
 
     Write(str: string, options?: fs.WriteFileOptions) {
-        fs.writeFileSync(this.path, str, options);
+         try {
+            fs.writeFileSync(this.path, str, options);
+         } catch (error) {
+              console.error(`Failed to write file ${this.path}:`, error);
+         }
     }
 
     IsExist(): boolean {
@@ -285,34 +290,155 @@ export class File {
     }
 
     IsFile(): boolean {
-        if (fs.existsSync(this.path)) {
+        try {
             return fs.lstatSync(this.path).isFile();
+        } catch {
+            return false; // If lstatSync fails (e.g., file doesn't exist), it's not a file
         }
-        return false;
     }
 
     IsDir(): boolean {
-        if (fs.existsSync(this.path)) {
+         try {
             return fs.lstatSync(this.path).isDirectory();
-        }
-        return false;
+         } catch {
+             return false; // If lstatSync fails, it's not a directory
+         }
     }
 
-    getHash(hashName?: string): string {
-        const hash = crypto.createHash(hashName || 'md5');
-        hash.update(fs.readFileSync(this.path));
-        return hash.digest('hex');
+    getHash(hashName: string = 'md5'): string { // Default hash algorithm
+        try {
+            const hash = crypto.createHash(hashName);
+            const fileBuffer = fs.readFileSync(this.path); // Read as buffer for hashing
+            hash.update(fileBuffer);
+            return hash.digest('hex');
+        } catch (error) {
+             console.error(`Failed to get hash for file ${this.path}:`, error);
+             return ''; // Return empty string or handle error
+        }
     }
 
     getSize(): number {
-        return fs.statSync(this.path).size;
+        try {
+            return fs.statSync(this.path).size;
+        } catch (error) {
+             console.error(`Failed to get size for file ${this.path}:`, error);
+             return 0; // Return 0 or handle error
+        }
     }
 
     ToUri(): string {
-        return 'file://' + this.ToNoProtocolUri();
+        return File.ToUri(this.path); // Use static method
     }
 
     ToNoProtocolUri(): string {
-        return '/' + encodeURIComponent(this.path.replace(/\\/g, '/'));
+        return File.ToNoProtocolUri(this.path); // Use static method
+    }
+
+    // --- Asynchronous Methods ---
+
+    async CreateDirAsync(recursive: boolean = false): Promise<void> {
+        // Check existence first to potentially avoid errors if it already exists
+        if (!(await this.IsDirAsync())) {
+             try {
+                await fs.promises.mkdir(this.path, { recursive: recursive });
+             } catch (error) {
+                  console.error(`Failed to create directory async ${this.path}:`, error);
+                  // Optionally re-throw
+             }
+        }
+    }
+
+    async GetListAsync(fileFilter?: RegExp[], dirFilter?: RegExp[]): Promise<File[]> {
+        let list: File[] = [];
+        try {
+            const dirents = await fs.promises.readdir(this.path, { withFileTypes: true });
+            for (const dirent of dirents) {
+                if (dirent.name !== '.' && dirent.name !== '..') {
+                    const f = new File(Path.join(this.path, dirent.name)); // Use Path.join
+                    // No need to check existence async, readdir ensures it exists
+                    if (dirent.isDirectory()) {
+                        if (!dirFilter || dirFilter.some(reg => reg.test(f.name))) {
+                            list.push(f);
+                        }
+                    } else if (dirent.isFile()) {
+                        if (!fileFilter || fileFilter.some(reg => reg.test(f.name))) {
+                            list.push(f);
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+             console.error(`Failed to read directory async ${this.path}:`, error);
+             // Return empty list or re-throw
+        }
+        return list;
+    }
+
+
+    async ReadAsync(encoding: BufferEncoding = 'utf8'): Promise<string> {
+        try {
+            return await fs.promises.readFile(this.path, { encoding: encoding });
+        } catch (error) {
+             console.error(`Failed to read file async ${this.path}:`, error);
+             return ''; // Return empty string or throw error
+        }
+    }
+
+    async WriteAsync(str: string, options?: fs.WriteFileOptions): Promise<void> {
+         try {
+            await fs.promises.writeFile(this.path, str, options);
+         } catch (error) {
+              console.error(`Failed to write file async ${this.path}:`, error);
+              // Optionally re-throw
+         }
+    }
+
+    async IsExistAsync(): Promise<boolean> {
+        try {
+            await fs.promises.access(this.path);
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
+    async IsFileAsync(): Promise<boolean> {
+        try {
+            const stats = await fs.promises.lstat(this.path);
+            return stats.isFile();
+        } catch {
+            return false;
+        }
+    }
+
+    async IsDirAsync(): Promise<boolean> {
+        try {
+            const stats = await fs.promises.lstat(this.path);
+            return stats.isDirectory();
+        } catch {
+            return false;
+        }
+    }
+
+    async getHashAsync(hashName: string = 'md5'): Promise<string> {
+        try {
+            const hash = crypto.createHash(hashName);
+            const fileBuffer = await fs.promises.readFile(this.path); // Read async
+            hash.update(fileBuffer);
+            return hash.digest('hex');
+        } catch (error) {
+             console.error(`Failed to get hash async for file ${this.path}:`, error);
+             return ''; // Return empty string or handle error
+        }
+    }
+
+    async getSizeAsync(): Promise<number> {
+        try {
+            const stats = await fs.promises.stat(this.path); // Use stat for size
+            return stats.size;
+        } catch (error) {
+             console.error(`Failed to get size async for file ${this.path}:`, error);
+             return 0; // Return 0 or handle error
+        }
     }
 }
