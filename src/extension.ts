@@ -24,25 +24,6 @@ export function activate(context: vscode.ExtensionContext) {
     const prjExplorer = new ProjectExplorer(context);
     const subscriber = context.subscriptions;
 
-    // 创建状态栏项
-    const buildStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, -8);
-    buildStatusBarItem.text = "$(gear) Build";
-    buildStatusBarItem.tooltip = "编译当前 Keil 工程";
-    buildStatusBarItem.command = 'keil.build';
-    buildStatusBarItem.show();
-
-    const rebuildStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, -9);
-    rebuildStatusBarItem.text = "$(refresh) Rebuild";
-    rebuildStatusBarItem.tooltip = "重新编译当前 Keil 工程";
-    rebuildStatusBarItem.command = 'keil.rebuild';
-    rebuildStatusBarItem.show();
-
-    const downloadStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, -10);
-    downloadStatusBarItem.text = "$(cloud-upload) Download";
-    downloadStatusBarItem.tooltip = "下载程序到目标设备";
-    downloadStatusBarItem.command = 'keil.download';
-    downloadStatusBarItem.show();
-
     // 注册新的命令
     subscriber.push(vscode.commands.registerCommand('keil.build', () => {
         const target = prjExplorer.getTarget();
@@ -1337,14 +1318,48 @@ class ProjectExplorer implements vscode.TreeDataProvider<IView> {
 
     private prjList: Map<string, KeilProject>;
     private currentActiveProject: KeilProject | undefined;
+    private buildStatusBarItem: vscode.StatusBarItem;
+    private rebuildStatusBarItem: vscode.StatusBarItem;
+    private downloadStatusBarItem: vscode.StatusBarItem;
 
     constructor(context: vscode.ExtensionContext) {
         this.prjList = new Map();
-        // Correct EventEmitter type
         this.viewEvent = new vscode.EventEmitter<IView | undefined | null>();
         this.onDidChangeTreeData = this.viewEvent.event;
         context.subscriptions.push(vscode.window.registerTreeDataProvider('project', this));
-        context.subscriptions.push(vscode.commands.registerCommand(this.ItemClickCommand, (item) => this.onItemClick(item)));
+        context.subscriptions.push(vscode.commands.registerCommand(this.ItemClickCommand, (item: IView) => this.onItemClick(item)));
+
+        // 创建状态栏项
+        this.buildStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, -8);
+        this.buildStatusBarItem.text = "$(gear) Build";
+        this.buildStatusBarItem.tooltip = "编译当前 Keil 工程";
+        this.buildStatusBarItem.command = 'keil.build';
+
+        this.rebuildStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, -9);
+        this.rebuildStatusBarItem.text = "$(refresh) Rebuild";
+        this.rebuildStatusBarItem.tooltip = "重新编译当前 Keil 工程";
+        this.rebuildStatusBarItem.command = 'keil.rebuild';
+
+        this.downloadStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, -10);
+        this.downloadStatusBarItem.text = "$(cloud-upload) Download";
+        this.downloadStatusBarItem.tooltip = "下载程序到目标设备";
+        this.downloadStatusBarItem.command = 'keil.download';
+
+        // 初始更新状态栏显示
+        this.updateStatusBarVisibility();
+    }
+
+    private updateStatusBarVisibility(): void {
+        const hasActiveProject = this.currentActiveProject !== undefined;
+        if (hasActiveProject) {
+            this.buildStatusBarItem.show();
+            this.rebuildStatusBarItem.show();
+            this.downloadStatusBarItem.show();
+        } else {
+            this.buildStatusBarItem.hide();
+            this.rebuildStatusBarItem.hide();
+            this.downloadStatusBarItem.hide();
+        }
     }
 
     async loadWorkspace() {
@@ -1380,23 +1395,20 @@ class ProjectExplorer implements vscode.TreeDataProvider<IView> {
     }
 
     async openProject(path: string): Promise<KeilProject | undefined> {
-
         const nPrj = new KeilProject(new File(path));
         if (!this.prjList.has(nPrj.prjID)) {
-
             await nPrj.load();
             nPrj.on('dataChanged', () => this.updateView());
             this.prjList.set(nPrj.prjID, nPrj);
-
             if (this.currentActiveProject == undefined) {
                 this.currentActiveProject = nPrj;
                 this.currentActiveProject.active();
             }
-
             this.updateView();
-
+            this.updateStatusBarVisibility();
             return nPrj;
         }
+        return undefined;
     }
 
     async closeProject(pID: string) {
@@ -1405,7 +1417,11 @@ class ProjectExplorer implements vscode.TreeDataProvider<IView> {
             prj.deactive();
             prj.close();
             this.prjList.delete(pID);
+            if (this.currentActiveProject?.prjID === pID) {
+                this.currentActiveProject = undefined;
+            }
             this.updateView();
+            this.updateStatusBarVisibility();
         }
     }
 
@@ -1414,8 +1430,9 @@ class ProjectExplorer implements vscode.TreeDataProvider<IView> {
         if (project) {
             this.currentActiveProject?.deactive();
             this.currentActiveProject = project;
-            this.currentActiveProject?.active();
+            this.currentActiveProject.active();
             this.updateView();
+            this.updateStatusBarVisibility();
         }
     }
 
@@ -1538,5 +1555,9 @@ class ProjectExplorer implements vscode.TreeDataProvider<IView> {
         } else {
             return element.getChildViews();
         }
+    }
+
+    getCurrentActiveProject(): KeilProject | undefined {
+        return this.currentActiveProject;
     }
 }
