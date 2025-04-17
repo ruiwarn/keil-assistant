@@ -2,7 +2,7 @@
 
 All notable changes to the "keil-assistant-new" extension will be documented in this file.
 
-## [2.1.0] - 2024-01-20
+## [2.1.0]
 
 ### 新增功能 ✨
 
@@ -31,7 +31,7 @@ All notable changes to the "keil-assistant-new" extension will be documented in 
 - 解决多项目冲突问题
 - 修复编译参数设置问题
 
-## [2.0.0] - 2025-04-16
+## [2.0.0]
 
 - **Note:** This project is now maintained by a new team. Development continues from this version onwards.
 - Updated project name to "keil-assistant-new" to reflect new ownership
