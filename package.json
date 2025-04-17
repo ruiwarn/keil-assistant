@@ -2,7 +2,7 @@
     "name": "keil-assistant-new",
     "displayName": "Keil Assistant New",
     "description": "An assistant for Keil uVision (Forked and maintained)",
-    "version": "2.0.0",
+    "version": "2.1.0",
     "publisher": "ruiwarn",
     "author": {
         "name": "Rui Wang"
@@ -17,7 +17,7 @@
     ],
     "homepage": "https://github.com/ruiwarn/keil-assistant",
     "engines": {
-        "vscode": "^1.70.0"
+        "vscode": "^1.85.0"
     },
     "categories": [
         "Programming Languages",
@@ -25,10 +25,11 @@
         "Other"
     ],
     "activationEvents": [
-        "onView:project"
+        "onView:project",
+        "onCommand:explorer.open"
     ],
     "icon": "res/icons/icon.png",
-    "main": "./dist/extension.js",
+    "main": "./dist/src/extension.js",
     "repository": {
         "type": "git",
         "url": "https://github.com/ruiwarn/keil-assistant"
@@ -44,14 +45,14 @@
                     "KeilAssistant.C51.Uv4Path": {
                         "type": "string",
                         "scope": "machine",
-                        "markdownDescription": "C51 UV4.exe path",
-                        "default": "null"
+                        "markdownDescription": "C51 UV4.exe 的绝对路径。例如：`C:\\Keil_v5\\UV4\\UV4.exe`\n\n请确保设置正确的路径，否则插件将无法正常工作。",
+                        "default": ""
                     },
                     "KeilAssistant.MDK.Uv4Path": {
                         "type": "string",
                         "scope": "machine",
-                        "markdownDescription": "MDK UV4.exe path",
-                        "default": "null"
+                        "markdownDescription": "MDK UV4.exe 的绝对路径。例如：`C:\\Keil_v5\\UV4\\UV4.exe`\n\n请确保设置正确的路径，否则插件将无法正常工作。",
+                        "default": ""
                     },
                     "KeilAssistant.Project.ExcludeList": {
                         "type": "array",
@@ -293,17 +294,17 @@
     "devDependencies": {
         "@types/glob": "^7.1.1",
         "@types/mocha": "^10.0.1",
-        "@types/node": "^18.14.6",
-        "@types/vscode": "^1.70.0",
-        "@types/xml2js": "^0.4.5",
+        "@types/node": "^18.19.86",
+        "@types/vscode": "^1.85.0",
+        "@types/xml2js": "^0.4.14",
+        "@typescript-eslint/eslint-plugin": "^5.54.0",
+        "@typescript-eslint/parser": "^5.54.0",
+        "eslint": "^8.35.0",
         "glob": "^7.1.5",
         "mocha": "^10.2.0",
         "ts-loader": "^9.4.2",
         "typescript": "^4.9.5",
         "vscode-test": "^1.6.1",
-        "eslint": "^8.35.0",
-        "@typescript-eslint/parser": "^5.54.0",
-        "@typescript-eslint/eslint-plugin": "^5.54.0",
         "webpack": "^5.75.0",
         "webpack-cli": "^5.0.1"
     },

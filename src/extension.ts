@@ -24,33 +24,137 @@ export function activate(context: vscode.ExtensionContext) {
     const prjExplorer = new ProjectExplorer(context);
     const subscriber = context.subscriptions;
 
+    // 创建状态栏项
+    const buildStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, -8);
+    buildStatusBarItem.text = "$(gear) Build";
+    buildStatusBarItem.tooltip = "编译当前 Keil 工程";
+    buildStatusBarItem.command = 'keil.build';
+    buildStatusBarItem.show();
+
+    const rebuildStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, -9);
+    rebuildStatusBarItem.text = "$(refresh) Rebuild";
+    rebuildStatusBarItem.tooltip = "重新编译当前 Keil 工程";
+    rebuildStatusBarItem.command = 'keil.rebuild';
+    rebuildStatusBarItem.show();
+
+    const downloadStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, -10);
+    downloadStatusBarItem.text = "$(cloud-upload) Download";
+    downloadStatusBarItem.tooltip = "下载程序到目标设备";
+    downloadStatusBarItem.command = 'keil.download';
+    downloadStatusBarItem.show();
+
+    // 注册新的命令
+    subscriber.push(vscode.commands.registerCommand('keil.build', () => {
+        const target = prjExplorer.getTarget();
+        if (target) {
+            target.build();
+        } else {
+            vscode.window.showWarningMessage('请先选择一个工程！');
+        }
+    }));
+
+    subscriber.push(vscode.commands.registerCommand('keil.rebuild', () => {
+        const target = prjExplorer.getTarget();
+        if (target) {
+            target.rebuild();
+        } else {
+            vscode.window.showWarningMessage('请先选择一个工程！');
+        }
+    }));
+
+    subscriber.push(vscode.commands.registerCommand('keil.download', () => {
+        const target = prjExplorer.getTarget();
+        if (target) {
+            target.download();
+        } else {
+            vscode.window.showWarningMessage('请先选择一个工程！');
+        }
+    }));
+
     subscriber.push(vscode.commands.registerCommand('explorer.open', async () => {
-
-        const uri = await vscode.window.showOpenDialog({
-            openLabel: 'Open a keil project',
-            canSelectFolders: false,
-            canSelectMany: false,
-            filters: {
-                'keil project xml': ['uvproj', 'uvprojx']
-            }
-        });
-
         try {
-            if (uri && uri.length > 0) {
+            // 使用 VSCode API 在工作区内搜索 .uvproj 和 .uvprojx 文件
+            const uvprojFiles = await vscode.workspace.findFiles('**/*.uvproj', '**/node_modules/**');
+            const uvprojxFiles = await vscode.workspace.findFiles('**/*.uvprojx', '**/node_modules/**');
+            const allFiles = [...uvprojFiles, ...uvprojxFiles];
 
-                // load project
-                const uvPrjPath = uri[0].fsPath;
+            if (allFiles.length === 0) {
+                vscode.window.showInformationMessage('工作区内没有找到 Keil 工程文件。');
+                return;
+            }
+
+            // 检查工程类型并验证对应的路径
+            let hasC51Project = false;
+            let hasArmProject = false;
+
+            for (const file of allFiles) {
+                const content = await vscode.workspace.fs.readFile(file);
+                const xmlContent = content.toString();
+                
+                // 检查是否是 C51 工程
+                if (xmlContent.includes('TargetOption') && xmlContent.includes('Target51') && xmlContent.includes('C51')) {
+                    hasC51Project = true;
+                }
+                // 检查是否是 ARM 工程
+                if (xmlContent.includes('TargetOption') && (xmlContent.includes('TargetCommonOption') || xmlContent.includes('TargetArmAds'))) {
+                    hasArmProject = true;
+                }
+            }
+
+            // 根据工程类型检查对应的路径
+            if (hasC51Project) {
+                const c51Path = vscode.workspace.getConfiguration('KeilAssistant.C51').get<string>('Uv4Path');
+                if (!c51Path) {
+                    vscode.window.showErrorMessage(
+                        '请先设置 C51 UV4 路径！\n' +
+                        '1. 打开设置 (Ctrl+,)\n' +
+                        '2. 搜索 "KeilAssistant.C51.Uv4Path"\n' +
+                        '3. 设置 C51 UV4.exe 的绝对路径\n' +
+                        '示例路径：C:\\Keil_v5\\UV4\\UV4.exe'
+                    );
+                    return;
+                }
+            }
+
+            if (hasArmProject) {
+                const mdkPath = vscode.workspace.getConfiguration('KeilAssistant.MDK').get<string>('Uv4Path');
+                if (!mdkPath) {
+                    vscode.window.showErrorMessage(
+                        '请先设置 MDK UV4 路径！\n' +
+                        '1. 打开设置 (Ctrl+,)\n' +
+                        '2. 搜索 "KeilAssistant.MDK.Uv4Path"\n' +
+                        '3. 设置 MDK UV4.exe 的绝对路径\n' +
+                        '示例路径：C:\\Keil_v5\\UV4\\UV4.exe'
+                    );
+                    return;
+                }
+            }
+
+            if (allFiles.length === 1) {
+                // 如果只找到一个工程文件，则自动打开
+                const uvPrjPath = allFiles[0].fsPath;
                 await prjExplorer.openProject(uvPrjPath);
+                vscode.window.showInformationMessage('Keil 工程加载完成！');
+            } else {
+                // 如果找到多个工程文件，则弹出列表让用户选择
+                const items = allFiles.map(file => ({
+                    label: vscode.workspace.asRelativePath(file),
+                    description: file.fsPath,
+                    uri: file
+                }));
 
-                // switch workspace
-                const result = await vscode.window.showInformationMessage(
-                    'keil project load done !, switch workspace ?', 'Ok', 'Later');
-                if (result === 'Ok') {
-                    openWorkspace(new File(node_path.dirname(uvPrjPath)));
+                const selected = await vscode.window.showQuickPick(items, {
+                    placeHolder: '请选择一个 Keil 工程文件'
+                });
+
+                if (selected) {
+                    const uvPrjPath = selected.uri.fsPath;
+                    await prjExplorer.openProject(uvPrjPath);
+                    vscode.window.showInformationMessage('Keil 工程加载完成！');
                 }
             }
         } catch (error) {
-            vscode.window.showErrorMessage(`open project failed !, msg: ${(<Error>error).message}`);
+            vscode.window.showErrorMessage(`打开工程失败！错误信息: ${(<Error>error).message}`);
         }
     }));
 
@@ -215,6 +319,24 @@ interface uVisonInfo {
     schemaVersion: string | undefined;
 }
 
+class PathUtils {
+    static toRelativePath(absolutePath: string): string {
+        if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
+            const workspaceRoot = vscode.workspace.workspaceFolders[0].uri.fsPath;
+            return node_path.relative(workspaceRoot, absolutePath);
+        }
+        return absolutePath;
+    }
+
+    static toAbsolutePath(relativePath: string): string {
+        if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
+            const workspaceRoot = vscode.workspace.workspaceFolders[0].uri.fsPath;
+            return node_path.join(workspaceRoot, relativePath);
+        }
+        return relativePath;
+    }
+}
+
 class KeilProject implements IView, KeilProjectInfo {
 
     prjID: string;
@@ -241,6 +363,7 @@ class KeilProject implements IView, KeilProjectInfo {
     protected _event: event.EventEmitter;
     protected watcher: FileWatcher;
     protected targetList: Target[];
+    protected files: any[] = [];
 
     constructor(_uvprjFile: File) {
         this._event = new event.EventEmitter();
@@ -301,10 +424,12 @@ class KeilProject implements IView, KeilProjectInfo {
 
         if (isArray(targets)) {
             for (const target of targets) {
-                this.targetList.push(Target.getInstance(this, this.uVsionFileInfo, target));
+                const newTarget = await Target.getInstance(this, this.uVsionFileInfo, target);
+                this.targetList.push(newTarget);
             }
         } else {
-            this.targetList.push(Target.getInstance(this, this.uVsionFileInfo, targets));
+            const newTarget = await Target.getInstance(this, this.uVsionFileInfo, targets);
+            this.targetList.push(newTarget);
         }
 
         for (const target of this.targetList) {
@@ -383,6 +508,16 @@ class KeilProject implements IView, KeilProjectInfo {
     getTargets(): Target[] {
         return this.targetList;
     }
+
+    private async loadFiles() {
+        // ... existing code ...
+        for (const file of this.files) {
+            const relativePath = PathUtils.toRelativePath(file['FilePath']);
+            const f = new File(PathUtils.toAbsolutePath(relativePath));
+            // ... rest of the code ...
+        }
+        // ... existing code ...
+    }
 }
 
 abstract class Target implements IView {
@@ -451,11 +586,38 @@ abstract class Target implements IView {
         this._event.on(event, listener);
     }
 
-    static getInstance(prjInfo: KeilProjectInfo, uvInfo: uVisonInfo, targetDOM: any): Target {
-        if (prjInfo.uvprjFile.suffix.toLowerCase() === '.uvproj') {
+    static async getInstance(prjInfo: KeilProjectInfo, uvInfo: uVisonInfo, targetDOM: any): Promise<Target> {
+        // 检查是否是 C51 工程
+        const isC51Project = targetDOM['TargetOption'] && 
+                            targetDOM['TargetOption']['Target51'] && 
+                            targetDOM['TargetOption']['Target51']['C51'];
+
+        // 检查是否是 ARM 工程
+        const isArmProject = targetDOM['TargetOption'] && 
+                            (targetDOM['TargetOption']['TargetCommonOption'] || 
+                             targetDOM['TargetOption']['TargetArmAds']);
+
+        if (isC51Project && !isArmProject) {
             return new C51Target(prjInfo, uvInfo, targetDOM);
-        } else {
+        } else if (isArmProject && !isC51Project) {
             return new ArmTarget(prjInfo, uvInfo, targetDOM);
+        } else {
+            // 如果无法确定工程类型，弹出选择对话框
+            const selection = await vscode.window.showQuickPick([
+                { label: 'C51 工程', description: '8051 系列单片机工程', target: 'C51' },
+                { label: 'ARM 工程', description: 'ARM 系列单片机工程', target: 'ARM' }
+            ], {
+                placeHolder: '请选择工程类型',
+                title: '无法自动识别工程类型，请手动选择'
+            });
+
+            if (!selection) {
+                throw new Error('未选择工程类型');
+            }
+
+            return selection.target === 'C51' ? 
+                new C51Target(prjInfo, uvInfo, targetDOM) : 
+                new ArmTarget(prjInfo, uvInfo, targetDOM);
         }
     }
 
@@ -596,7 +758,8 @@ abstract class Target implements IView {
                 }
 
                 for (const file of fileList) {
-                    const f = new File(this.project.toAbsolutePath(file['FilePath']));
+                    const relativePath = PathUtils.toRelativePath(file['FilePath']);
+                    const f = new File(PathUtils.toAbsolutePath(relativePath));
 
                     let isFileExcluded = isGroupExcluded;
                     if (isFileExcluded === false && file['FileOption']) { // check file is enable
@@ -728,6 +891,10 @@ abstract class Target implements IView {
     protected abstract getBuildCommand(): string[];
     protected abstract getRebuildCommand(): string[];
     protected abstract getDownloadCommand(): string[];
+
+    protected getFilePath(filePath: string): string {
+        return PathUtils.toAbsolutePath(PathUtils.toRelativePath(filePath));
+    }
 }
 
 //===============================================
@@ -809,7 +976,7 @@ class C51Target extends Target {
             '--uv4Path', ResourceManager.getInstance().getC51UV4Path(),
             '--prjPath', this.project.uvprjFile.path,
             '--targetName', this.targetName,
-            '-c', '${uv4Path} -b ${prjPath} -j0 -t ${targetName}'
+            '-c', '${uv4Path} -b ${prjPath} -j8 -t ${targetName}'
         ];
     }
 
@@ -818,7 +985,7 @@ class C51Target extends Target {
             '--uv4Path', ResourceManager.getInstance().getC51UV4Path(),
             '--prjPath', this.project.uvprjFile.path,
             '--targetName', this.targetName,
-            '-c', '${uv4Path} -r ${prjPath} -j0 -t ${targetName}'
+            '-c', '${uv4Path} -r ${prjPath} -j8 -t ${targetName}'
         ];
     }
 
@@ -1135,7 +1302,7 @@ class ArmTarget extends Target {
             '--uv4Path', ResourceManager.getInstance().getArmUV4Path(),
             '--prjPath', this.project.uvprjFile.path,
             '--targetName', this.targetName,
-            '-c', '${uv4Path} -b ${prjPath} -j0 -t ${targetName}'
+            '-c', '${uv4Path} -b ${prjPath} -j100 -t ${targetName}'
         ];
     }
 
@@ -1144,7 +1311,7 @@ class ArmTarget extends Target {
             '--uv4Path', ResourceManager.getInstance().getArmUV4Path(),
             '--prjPath', this.project.uvprjFile.path,
             '--targetName', this.targetName,
-            '-c', '${uv4Path} -r ${prjPath} -j0 -t ${targetName}'
+            '-c', '${uv4Path} -r ${prjPath} -j100 -t ${targetName}'
         ];
     }
 
@@ -1182,20 +1349,26 @@ class ProjectExplorer implements vscode.TreeDataProvider<IView> {
 
     async loadWorkspace() {
         if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
-            const wsFilePath: string = vscode.workspace.workspaceFile && /^file:/.test(vscode.workspace.workspaceFile.toString()) ?
-                node_path.dirname(vscode.workspace.workspaceFile.fsPath) : vscode.workspace.workspaceFolders[0].uri.fsPath;
-            const workspace = new File(wsFilePath);
+            const workspaceRoot = vscode.workspace.workspaceFolders[0].uri.fsPath;
+            const workspace = new File(workspaceRoot);
+            
             if (workspace.IsDir()) {
                 const excludeList = ResourceManager.getInstance().getProjectExcludeList();
                 const workspaceFiles = workspace.GetList([/\.uvproj[x]?$/i], File.EMPTY_FILTER);
-                // Convert string locations to File objects before concatenating
+                
+                // 获取工程文件位置列表并转换为相对路径
                 const locationFiles = ResourceManager.getInstance().getProjectFileLocationList()
-                                        .map(loc => new File(loc)); // Assuming new File(path) works
+                    .map(loc => {
+                        const absolutePath = loc;
+                        const relativePath = node_path.relative(workspaceRoot, absolutePath);
+                        return new File(node_path.join(workspaceRoot, relativePath));
+                    });
+                
                 const uvList = workspaceFiles.concat(locationFiles)
                     .filter((file) => { return !excludeList.includes(file.name); });
+                
                 for (const uvFile of uvList) {
                     try {
-                        // Removed vscodeVariables call, assuming uvFile.path is already resolved
                         await this.openProject(uvFile.path);
                     } catch (error) {
                         const message = error instanceof Error ? error.message : String(error);

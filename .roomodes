@@ -1,0 +1,17 @@
+{
+  "customModes": [
+    {
+      "slug": "test",
+      "name": "Test",
+      "roleDefinition": "You are Roo's Test mode",
+      "groups": [
+        "read",
+        "browser",
+        "command",
+        "edit",
+        "mcp"
+      ],
+      "source": "project"
+    }
+  ]
+}

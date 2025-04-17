@@ -31,28 +31,48 @@ function activate(context) {
     const prjExplorer = new ProjectExplorer(context);
     const subscriber = context.subscriptions;
     subscriber.push(vscode.commands.registerCommand('explorer.open', () => __awaiter(this, void 0, void 0, function* () {
-        const uri = yield vscode.window.showOpenDialog({
-            openLabel: 'Open a keil project',
-            canSelectFolders: false,
-            canSelectMany: false,
-            filters: {
-                'keil project xml': ['uvproj', 'uvprojx']
-            }
-        });
         try {
-            if (uri && uri.length > 0) {
-                // load project
-                const uvPrjPath = uri[0].fsPath;
+            // 使用 VSCode API 在工作区内搜索 .uvproj 和 .uvprojx 文件
+            const uvprojFiles = yield vscode.workspace.findFiles('**/*.uvproj', '**/node_modules/**');
+            const uvprojxFiles = yield vscode.workspace.findFiles('**/*.uvprojx', '**/node_modules/**');
+            const allFiles = [...uvprojFiles, ...uvprojxFiles];
+            if (allFiles.length === 0) {
+                vscode.window.showInformationMessage('工作区内没有找到 Keil 工程文件。');
+                return;
+            }
+            if (allFiles.length === 1) {
+                // 如果只找到一个工程文件，则自动打开
+                const uvPrjPath = allFiles[0].fsPath;
                 yield prjExplorer.openProject(uvPrjPath);
-                // switch workspace
-                const result = yield vscode.window.showInformationMessage('keil project load done !, switch workspace ?', 'Ok', 'Later');
-                if (result === 'Ok') {
+                // 切换工作区
+                const result = yield vscode.window.showInformationMessage('Keil 工程加载完成！是否切换工作区？', '确定', '稍后');
+                if (result === '确定') {
                     openWorkspace(new File_1.File(node_path.dirname(uvPrjPath)));
+                }
+            }
+            else {
+                // 如果找到多个工程文件，则弹出列表让用户选择
+                const items = allFiles.map(file => ({
+                    label: vscode.workspace.asRelativePath(file),
+                    description: file.fsPath,
+                    uri: file
+                }));
+                const selected = yield vscode.window.showQuickPick(items, {
+                    placeHolder: '请选择一个 Keil 工程文件'
+                });
+                if (selected) {
+                    const uvPrjPath = selected.uri.fsPath;
+                    yield prjExplorer.openProject(uvPrjPath);
+                    // 切换工作区
+                    const result = yield vscode.window.showInformationMessage('Keil 工程加载完成！是否切换工作区？', '确定', '稍后');
+                    if (result === '确定') {
+                        openWorkspace(new File_1.File(node_path.dirname(uvPrjPath)));
+                    }
                 }
             }
         }
         catch (error) {
-            vscode.window.showErrorMessage(`open project failed !, msg: ${error.message}`);
+            vscode.window.showErrorMessage(`打开工程失败！错误信息: ${error.message}`);
         }
     })));
     subscriber.push(vscode.commands.registerCommand('project.close', (item) => prjExplorer.closeProject(item.prjID)));
