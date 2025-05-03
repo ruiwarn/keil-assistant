@@ -304,7 +304,13 @@ class PathUtils {
     static toRelativePath(absolutePath: string): string {
         if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
             const workspaceRoot = vscode.workspace.workspaceFolders[0].uri.fsPath;
-            return node_path.relative(workspaceRoot, absolutePath);
+            // 确保路径是绝对路径
+            if (!node_path.isAbsolute(absolutePath)) {
+                return absolutePath;
+            }
+            // 清理可能存在的重复盘符
+            const cleanPath = absolutePath.replace(/^[a-z]:\\[a-z]:\\/i, (match) => match.substring(0, 3));
+            return node_path.relative(workspaceRoot, cleanPath);
         }
         return absolutePath;
     }
@@ -312,6 +318,10 @@ class PathUtils {
     static toAbsolutePath(relativePath: string): string {
         if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
             const workspaceRoot = vscode.workspace.workspaceFolders[0].uri.fsPath;
+            // 如果已经是绝对路径，直接返回
+            if (node_path.isAbsolute(relativePath)) {
+                return node_path.normalize(relativePath);
+            }
             return node_path.join(workspaceRoot, relativePath);
         }
         return relativePath;
@@ -431,10 +441,13 @@ class KeilProject implements IView, KeilProjectInfo {
 
     toAbsolutePath(rePath: string): string {
         const path = rePath.replace(/\//g, File.sep);
-        if (/^[a-z]:/i.test(path)) {
-            return node_path.normalize(path);
+        // 如果路径已经是绝对路径，直接返回
+        if (node_path.isAbsolute(path)) {
+            // 清理可能存在的重复盘符
+            return node_path.normalize(path.replace(/^[a-z]:\\[a-z]:\\/i, (match) => match.substring(0, 3)));
         }
-        return node_path.normalize(this.uvprjFile.dir + File.sep + path);
+        // 否则，将相对路径与项目目录拼接
+        return node_path.normalize(node_path.join(this.uvprjFile.dir, path));
     }
 
     active() {
@@ -739,8 +752,8 @@ abstract class Target implements IView {
                 }
 
                 for (const file of fileList) {
-                    const relativePath = PathUtils.toRelativePath(file['FilePath']);
-                    const f = new File(PathUtils.toAbsolutePath(relativePath));
+                    // 直接使用project.toAbsolutePath处理路径
+                    const f = new File(this.project.toAbsolutePath(file['FilePath']));
 
                     let isFileExcluded = isGroupExcluded;
                     if (isFileExcluded === false && file['FileOption']) { // check file is enable
