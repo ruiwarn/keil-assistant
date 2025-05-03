@@ -2,6 +2,14 @@
 
 All notable changes to the "keil-assistant-new" extension will be documented in this file.
 
+## [2.1.2]
+
+### 修复问题 🔧
+
+- 修复文件路径处理问题，解决文件路径中出现的错误盘符问题
+- 优化路径处理逻辑，确保正确解析相对路径和绝对路径
+- 改进工作区根路径的处理方式
+
 ## [2.1.0]
 
 ### 新增功能 ✨
