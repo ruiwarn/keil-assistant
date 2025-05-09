@@ -5,10 +5,12 @@ import * as event from 'events';
 import * as fs from 'fs';
 import * as node_path from 'path';
 import * as child_process from 'child_process';
+import * as os from 'os'; // Import os module
 // import * as vscodeVariables from 'vscode-variables'; // Removed unused import
 
 import { File } from '../lib/node_utility/File';
 import { ResourceManager } from './ResourceManager';
+let diagnosticCollection: vscode.DiagnosticCollection;
 import { FileWatcher } from '../lib/node_utility/FileWatcher';
 import { Time } from '../lib/node_utility/Time';
 import { isArray } from 'util';
@@ -21,7 +23,39 @@ export function activate(context: vscode.ExtensionContext) {
     // init resource
     ResourceManager.getInstance(context);
 
+    // Create a diagnostic collection for Keil compiler errors/warnings
+    diagnosticCollection = vscode.languages.createDiagnosticCollection('keilAssistant');
+    context.subscriptions.push(diagnosticCollection);
+
     const prjExplorer = new ProjectExplorer(context);
+    context.subscriptions.push(prjExplorer); // Assuming ProjectExplorer might need disposal or is a provider
+
+    // Listen for task termination to process diagnostics
+    context.subscriptions.push(vscode.tasks.onDidEndTaskProcess(async (event) => {
+        const task = event.execution.task;
+        // Check if it's our Keil task and it's a build or rebuild
+        if (task.definition.type === 'keil-task' && 
+            (task.name === 'build' || task.name === 'rebuild') &&
+            task.definition.prjID && task.definition.targetName) {
+            
+            const prjID = task.definition.prjID as string;
+            const targetName = task.definition.targetName as string;
+
+            const project = prjExplorer.getProjectById(prjID);
+            if (project) {
+                const target = project.getTargetByName(targetName);
+                if (target) {
+                    project.logger.log(`[INFO] Task '${task.name}' ended for ${targetName}. Exit code: ${event.exitCode}. Processing diagnostics.`);
+                    await target.processDiagnostics();
+                } else {
+                    console.error(`Keil Assistant: Could not find target '${targetName}' for project ID '${prjID}' after task end.`);
+                }
+            } else {
+                console.error(`Keil Assistant: Could not find project with ID '${prjID}' after task end.`);
+            }
+        }
+    }));
+
     const subscriber = context.subscriptions;
 
     // 注册新的命令
@@ -287,7 +321,7 @@ interface KeilProjectInfo {
 
     prjID: string;
 
-    vscodeDir: File;
+    projectStorageDir: File; // Renamed from vscodeDir
 
     uvprjFile: File;
 
@@ -341,7 +375,7 @@ class KeilProject implements IView, KeilProjectInfo {
 
     //-------------
 
-    vscodeDir: File;
+    projectStorageDir: File; // Was vscodeDir
     uvprjFile: File;
     logger: Console;
 
@@ -356,20 +390,33 @@ class KeilProject implements IView, KeilProjectInfo {
     protected targetList: Target[];
     protected files: any[] = [];
 
-    constructor(_uvprjFile: File) {
+    // KeilProject constructor needs ExtensionContext to determine globalStoragePath
+    constructor(_uvprjFile: File, extensionContext: vscode.ExtensionContext) {
         this._event = new event.EventEmitter();
         this.uVsionFileInfo = <uVisonInfo>{};
         this.targetList = [];
-        this.vscodeDir = new File(_uvprjFile.dir + File.sep + '.vscode');
-        this.vscodeDir.CreateDir();
-        const logPath = this.vscodeDir.path + File.sep + 'keil-assistant.log';
-        this.logger = new console.Console(fs.createWriteStream(logPath, { flags: 'a+' }));
         this.uvprjFile = _uvprjFile;
-        this.watcher = new FileWatcher(this.uvprjFile);
         this.prjID = getMD5(_uvprjFile.path);
+
+        // Determine project-specific global storage path
+        const globalStoragePath = extensionContext.globalStorageUri.fsPath;
+        this.projectStorageDir = new File(node_path.join(globalStoragePath, this.prjID));
+        try {
+            if (!fs.existsSync(this.projectStorageDir.path)) {
+                fs.mkdirSync(this.projectStorageDir.path, { recursive: true });
+            }
+        } catch (error) {
+            console.error(`Keil Assistant: Failed to create project storage directory at ${this.projectStorageDir.path}`, error);
+            // Fallback or error handling if directory creation fails - for now, log and continue
+        }
+        
+        const logPath = node_path.join(this.projectStorageDir.path, 'keil-assistant.log');
+        this.logger = new console.Console(fs.createWriteStream(logPath, { flags: 'a+' }));
+        this.watcher = new FileWatcher(this.uvprjFile);
         this.label = _uvprjFile.noSuffixName;
         this.tooltip = _uvprjFile.path;
-        this.logger.log('[info] Log at : ' + Time.GetInstance().GetTimeStamp() + '\r\n');
+        this.logger.log(`[info] Log for project ${this.label} (${this.prjID}) at : ${Time.GetInstance().GetTimeStamp()}\r\n`);
+        this.logger.log(`[info] Project-specific storage: ${this.projectStorageDir.path}`);
         this.watcher.OnChanged = () => {
             if (this.prevUpdateTime === undefined ||
                 this.prevUpdateTime + 2000 < Date.now()) {
@@ -554,7 +601,7 @@ abstract class Target implements IView {
         this.includes = new Set();
         this.defines = new Set();
         this.fGroups = [];
-        this.uv4LogFile = new File(this.project.vscodeDir.path + File.sep + 'uv4.log');
+        this.uv4LogFile = new File(node_path.join(this.project.projectStorageDir.path, 'uv4.log'));
         this.uv4LogLockFileWatcher = new FileWatcher(new File(this.uv4LogFile.path + '.lock'));
 
         if (!this.uv4LogLockFileWatcher.file.IsFile()) { // create file if not existed
@@ -631,7 +678,8 @@ abstract class Target implements IView {
 
     private updateCppProperties() {
 
-        const proFile = new File(this.project.vscodeDir.path + File.sep + 'c_cpp_properties.json');
+        // c_cpp_properties.json should also be in the project-specific global storage
+        const proFile = new File(node_path.join(this.project.projectStorageDir.path, 'c_cpp_properties.json'));
         let obj: any;
 
         if (proFile.IsFile()) {
@@ -800,16 +848,52 @@ abstract class Target implements IView {
         // use task
         if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
 
-            const task = new vscode.Task({ type: 'keil-task' }, vscode.TaskScope.Global, name, 'shell');
-            task.execution = new vscode.ShellExecution(cmdPrefixSuffix + commandLine + cmdPrefixSuffix);
+            const taskDefinition = { 
+                type: 'keil-task', 
+                prjID: this.project.prjID,       // Add prjID to definition
+                targetName: this.targetName      // Add targetName to definition
+            };
+            // Using TaskScope.Workspace as project-specific details are in definition
+            const task = new vscode.Task(taskDefinition, vscode.TaskScope.Workspace, name, 'shell'); 
+            const options: vscode.ShellExecutionOptions = { cwd: this.project.uvprjFile.dir };
+            task.execution = new vscode.ShellExecution(cmdPrefixSuffix + commandLine + cmdPrefixSuffix, options);
             task.isBackground = false;
-            task.problemMatchers = this.getProblemMatcher();
+            // task.problemMatchers = this.getProblemMatcher(); // We will handle diagnostics manually
+
+            // Clear previous diagnostics for this project/target when a new build starts
+            diagnosticCollection.clear(); // Clears all diagnostics from this collection.
+                                          // More granular clearing might be needed if multiple projects are handled.
+
+            // Log debugging information for path resolution
+            this.project.logger.log(`[DEBUG] Task CWD for '${name}': '${this.project.uvprjFile.dir}'`);
+            const exampleCompilerPath = "..\\source\\main.c"; // Using a typical problematic path
+            try {
+                if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
+                    const workspaceRoot = vscode.workspace.workspaceFolders[0].uri.fsPath;
+                    const resolvedPath = node_path.resolve(this.project.uvprjFile.dir, exampleCompilerPath);
+                    this.project.logger.log(`[DEBUG] Resolved absolute path for '${exampleCompilerPath}' (from CWD): '${resolvedPath}'`);
+                    const relativeToWorkspace = node_path.relative(workspaceRoot, resolvedPath);
+                    this.project.logger.log(`[DEBUG] Path relative to workspace for '${exampleCompilerPath}': '${relativeToWorkspace}'`);
+                } else {
+                    this.project.logger.log(`[DEBUG] No workspace folder found, cannot calculate relative path.`);
+                }
+            } catch (e: any) {
+                this.project.logger.log(`[DEBUG] Error during path resolution debug: ${e.message}`);
+            }
+
             task.presentationOptions = {
                 echo: false,
                 focus: false,
                 clear: true
             };
             vscode.tasks.executeTask(task);
+
+            // After task execution, we'll need to parse the log and publish diagnostics.
+            // This will be handled by listening to onDidEndTaskProcess or similar.
+            // For now, let's add a placeholder for where this logic would be triggered.
+            // TODO: Implement log parsing and diagnostic publishing via onDidEndTaskProcess
+            // this.handleTaskCompletion(name); // This direct call will be removed/replaced
+
 
         } else {
 
@@ -889,6 +973,81 @@ abstract class Target implements IView {
     protected getFilePath(filePath: string): string {
         return PathUtils.toAbsolutePath(PathUtils.toRelativePath(filePath));
     }
+
+    protected abstract getDiagnosticRegex(): RegExp;
+
+    public async processDiagnostics(): Promise<void> { // Changed to public
+        this.project.logger.log(`[INFO] Target '${this.targetName}': Processing diagnostics from log file '${this.uv4LogFile.path}'...`);
+
+        let logContent: string;
+        try {
+            logContent = this.uv4LogFile.Read(); 
+        } catch (e: any) {
+            this.project.logger.log(`[ERROR] Failed to read log file '${this.uv4LogFile.path}': ${e.message}`);
+            return;
+        }
+
+        if (!logContent) {
+            this.project.logger.log(`[INFO] Log file '${this.uv4LogFile.path}' is empty.`);
+            return;
+        }
+
+        const diagnosticsMap: Map<string, vscode.Diagnostic[]> = new Map();
+        const lines = logContent.split(/\r?\n/);
+        const regex = this.getDiagnosticRegex();
+
+        this.project.logger.log(`[DEBUG] Using regex for ${this.constructor.name}: ${regex}`);
+
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            const match = regex.exec(line);
+
+            if (match) {
+                const rawRelativePath = match[1];
+                const lineNumber = parseInt(match[2], 10); 
+                const severityWord = match[3].toLowerCase();
+                const errorCode = match[4]; 
+                const message = match[5];
+                const fullMessage = `${errorCode}: ${message}`;
+                
+                const severity = severityWord === 'error' 
+                                 ? vscode.DiagnosticSeverity.Error 
+                                 : vscode.DiagnosticSeverity.Warning;
+
+                if (rawRelativePath && !isNaN(lineNumber) && lineNumber > 0) {
+                    try {
+                        const absolutePath = this.project.toAbsolutePath(rawRelativePath);
+                        const uri = vscode.Uri.file(absolutePath);
+                        const range = new vscode.Range(lineNumber - 1, 0, lineNumber - 1, 100); 
+
+                        const diagnostic = new vscode.Diagnostic(range, fullMessage, severity);
+                        diagnostic.source = `Keil ${this.constructor.name.replace('Target', '')} Compiler`;
+
+                        if (!diagnosticsMap.has(uri.toString())) {
+                            diagnosticsMap.set(uri.toString(), []);
+                        }
+                        diagnosticsMap.get(uri.toString())!.push(diagnostic);
+                        this.project.logger.log(`[DEBUG] Found diagnostic: ${uri.fsPath}:${lineNumber} - ${fullMessage}`);
+
+                    } catch (e: any) {
+                        this.project.logger.log(`[ERROR] Error processing diagnostic line '${line}': ${e.message}`);
+                    }
+                } else {
+                     this.project.logger.log(`[WARN] Could not parse diagnostic from line: ${line}`);
+                }
+            }
+        }
+
+        diagnosticsMap.forEach((diags, uriString) => {
+            diagnosticCollection.set(vscode.Uri.parse(uriString), diags);
+        });
+
+        if (diagnosticsMap.size > 0) {
+            this.project.logger.log(`[INFO] Published diagnostics for ${diagnosticsMap.size} file(s).`);
+        } else {
+            this.project.logger.log(`[INFO] No new diagnostics found in log file.`);
+        }
+    }
 }
 
 //===============================================
@@ -961,25 +1120,33 @@ class C51Target extends Target {
         return target['Groups']['Group'] || [];
     }
 
-    protected getProblemMatcher(): string[] {
+    protected getProblemMatcher(): string[] { // This method is no longer used for diagnostics but kept for structure
         return ['$c51'];
     }
 
+    protected getDiagnosticRegex(): RegExp {
+        return /^([^()]+)\(([\d]+)\):\s+(error|warning):\s+(#\d+):\s+(.+)$/i;
+    }
+
     protected getBuildCommand(): string[] {
+        const numCPUs = os.cpus().length;
+        const jValue = Math.max(1, Math.min(numCPUs, 4)); // For C51, limit to 4 or numCPUs, whichever is smaller, but at least 1
         return [
             '--uv4Path', ResourceManager.getInstance().getC51UV4Path(),
             '--prjPath', this.project.uvprjFile.path,
             '--targetName', this.targetName,
-            '-c', '${uv4Path} -b ${prjPath} -j8 -t ${targetName}'
+            '-c', `\${uv4Path} -b \${prjPath} -j${jValue} -t \${targetName}`
         ];
     }
 
     protected getRebuildCommand(): string[] {
+        const numCPUs = os.cpus().length;
+        const jValue = Math.max(1, Math.min(numCPUs, 4)); // For C51, limit to 4 or numCPUs, whichever is smaller, but at least 1
         return [
             '--uv4Path', ResourceManager.getInstance().getC51UV4Path(),
             '--prjPath', this.project.uvprjFile.path,
             '--targetName', this.targetName,
-            '-c', '${uv4Path} -r ${prjPath} -j8 -t ${targetName}'
+            '-c', `\${uv4Path} -r \${prjPath} -j${jValue} -t \${targetName}`
         ];
     }
 
@@ -1287,25 +1454,33 @@ class ArmTarget extends Target {
         return target['Groups']['Group'] || [];
     }
 
-    protected getProblemMatcher(): string[] {
+    protected getProblemMatcher(): string[] { // This method is no longer used for diagnostics but kept for structure
         return ['$armcc', '$gcc'];
     }
 
+    protected getDiagnosticRegex(): RegExp {
+        return /^([^()]+)\(([\d]+)\):\s+(error|warning):\s+#([\d\w-]+):\s+(.+)$/i;
+    }
+
     protected getBuildCommand(): string[] {
+        const numCPUs = os.cpus().length;
+        const jValue = Math.max(1, numCPUs); // For ARM, use all CPUs, but at least 1
         return [
             '--uv4Path', ResourceManager.getInstance().getArmUV4Path(),
             '--prjPath', this.project.uvprjFile.path,
             '--targetName', this.targetName,
-            '-c', '${uv4Path} -b ${prjPath} -j100 -t ${targetName}'
+            '-c', `\${uv4Path} -b \${prjPath} -j${jValue} -t \${targetName}`
         ];
     }
 
     protected getRebuildCommand(): string[] {
+        const numCPUs = os.cpus().length;
+        const jValue = Math.max(1, numCPUs); // For ARM, use all CPUs, but at least 1
         return [
             '--uv4Path', ResourceManager.getInstance().getArmUV4Path(),
             '--prjPath', this.project.uvprjFile.path,
             '--targetName', this.targetName,
-            '-c', '${uv4Path} -r ${prjPath} -j100 -t ${targetName}'
+            '-c', `\${uv4Path} -r \${prjPath} -j${jValue} -t \${targetName}`
         ];
     }
 
@@ -1321,7 +1496,7 @@ class ArmTarget extends Target {
 
 //================================================
 
-class ProjectExplorer implements vscode.TreeDataProvider<IView> {
+class ProjectExplorer implements vscode.TreeDataProvider<IView>, vscode.Disposable {
 
     private ItemClickCommand = 'Item.Click';
 
@@ -1335,7 +1510,10 @@ class ProjectExplorer implements vscode.TreeDataProvider<IView> {
     private rebuildStatusBarItem: vscode.StatusBarItem;
     private downloadStatusBarItem: vscode.StatusBarItem;
 
+    private extensionContext: vscode.ExtensionContext; // Store context
+
     constructor(context: vscode.ExtensionContext) {
+        this.extensionContext = context; // Store context
         this.prjList = new Map();
         this.viewEvent = new vscode.EventEmitter<IView | undefined | null>();
         this.onDidChangeTreeData = this.viewEvent.event;
@@ -1408,7 +1586,8 @@ class ProjectExplorer implements vscode.TreeDataProvider<IView> {
     }
 
     async openProject(path: string): Promise<KeilProject | undefined> {
-        const nPrj = new KeilProject(new File(path));
+        // Pass extensionContext to KeilProject constructor
+        const nPrj = new KeilProject(new File(path), this.extensionContext); 
         if (!this.prjList.has(nPrj.prjID)) {
             await nPrj.load();
             nPrj.on('dataChanged', () => this.updateView());
@@ -1572,5 +1751,20 @@ class ProjectExplorer implements vscode.TreeDataProvider<IView> {
 
     getCurrentActiveProject(): KeilProject | undefined {
         return this.currentActiveProject;
+    }
+
+    public getProjectById(prjID: string): KeilProject | undefined {
+        return this.prjList.get(prjID);
+    }
+
+    dispose() {
+        // Dispose of any resources managed by ProjectExplorer itself, if any.
+        // TreeDataProvider and Commands pushed to context.subscriptions are disposed by VSCode.
+        this.buildStatusBarItem.dispose();
+        this.rebuildStatusBarItem.dispose();
+        this.downloadStatusBarItem.dispose();
+        this.prjList.forEach(prj => prj.close()); // Ensure projects are closed
+        this.prjList.clear();
+        this.viewEvent.dispose();
     }
 }

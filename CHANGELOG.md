@@ -2,6 +2,16 @@
 
 All notable changes to the "keil-assistant-new" extension will be documented in this file.
 
+## [2.1.3] - 2025-05-09
+
+### 修复问题 🔧
+- 彻底解决VSCode“问题”面板中错误路径（特别是包含`..`的路径）显示不正确及无法跳转的问题，改为插件手动解析编译日志并使用绝对路径生成诊断信息。
+- 确保VSCode终端中Ctrl+点击错误路径（包括含`..`的路径）能够正确定位到源代码。
+
+### 优化改进 ✨
+- 将插件生成的日志文件 (`keil-assistant.log`, `uv4.log`) 及 `c_cpp_properties.json` 的存储位置从工作区`.vscode`目录迁移到VSCode全局插件存储区，并按项目ID进行隔离，保持工作区整洁。
+- 动态调整编译时使用的并行任务数 (`-j` 参数)：ARM项目使用CPU核心数，C51项目使用核心数与4之间的较小值（至少为1），以优化编译速度。
+
 ## [2.1.2]
 
 ### 修复问题 🔧
