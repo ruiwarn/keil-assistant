@@ -16,31 +16,62 @@ import { Time } from '../lib/node_utility/Time';
 import { isArray } from 'util';
 import { CmdLineHandler } from './CmdLineHandler';
 
-function showMessage(message: string, type: 'info' | 'warning' | 'error' = 'info', timeout = 1000) {
+// 添加一个消息防重复显示机制
+const messageDebouncer = new Map<string, number>();
+
+function showMessage(message: string, type: 'info' | 'warning' | 'error' = 'info', timeout = 1000, items?: string[]) {
+    // 生成消息的唯一标识
+    const messageKey = `${message}-${type}`;
+    const now = Date.now();
+    
+    // 检查是否在防重复时间内
+    const lastShowTime = messageDebouncer.get(messageKey);
+    if (lastShowTime && (now - lastShowTime) < 2000) { // 2秒内的相同消息不重复显示
+        return;
+    }
+    
+    // 更新显示时间
+    messageDebouncer.set(messageKey, now);
+    
+    // 2秒后清除记录
+    setTimeout(() => {
+        messageDebouncer.delete(messageKey);
+    }, 2000);
+
     const options = { modal: false };
     let promise: Thenable<string | undefined>;
     
     switch(type) {
         case 'info':
-            promise = vscode.window.showInformationMessage(message, options);
+            promise = items ? 
+                vscode.window.showInformationMessage(message, ...items) :
+                vscode.window.showInformationMessage(message, options);
             break;
         case 'warning':
-            promise = vscode.window.showWarningMessage(message, options);
+            promise = items ?
+                vscode.window.showWarningMessage(message, ...items) :
+                vscode.window.showWarningMessage(message, options);
             break;
         case 'error':
-            promise = vscode.window.showErrorMessage(message, options);
+            promise = items ?
+                vscode.window.showErrorMessage(message, ...items) :
+                vscode.window.showErrorMessage(message, options);
             break;
     }
 
-    // 设置定时器自动关闭消息
-    setTimeout(() => {
-        promise.then(result => {
-            if (result) {
-                // 如果消息还在显示，则关闭它
-                vscode.commands.executeCommand('workbench.action.closeMessages');
-            }
-        });
-    }, timeout);
+    // 如果没有选项，则设置定时器自动关闭消息
+    if (!items) {
+        setTimeout(() => {
+            promise.then(result => {
+                if (result) {
+                    // 如果消息还在显示，则关闭它
+                    vscode.commands.executeCommand('workbench.action.closeMessages');
+                }
+            });
+        }, timeout);
+    }
+
+    return promise;
 }
 
 export function activate(context: vscode.ExtensionContext) {
@@ -178,7 +209,6 @@ export function activate(context: vscode.ExtensionContext) {
                 // 如果只找到一个工程文件，则自动打开
                 const uvPrjPath = allFiles[0].fsPath;
                 await prjExplorer.openProject(uvPrjPath);
-                showMessage('Keil 工程加载完成！', 'info');
             } else {
                 // 如果找到多个工程文件，则弹出列表让用户选择
                 const items = allFiles.map(file => ({
@@ -194,7 +224,6 @@ export function activate(context: vscode.ExtensionContext) {
                 if (selected) {
                     const uvPrjPath = selected.uri.fsPath;
                     await prjExplorer.openProject(uvPrjPath);
-                    showMessage('Keil 工程加载完成！', 'info');
                 }
             }
         } catch (error) {
@@ -1273,7 +1302,6 @@ class ArmTarget extends Target {
         '__ror(x,y)=0U',
         '__schedule_barrier()=',
         '__semihost(x,y)=0',
-        '__sev()=',
         '__sqrt(x)=0.0',
         '__sqrtf(x)=0.0f',
         '__ssat(x,y)=0',
@@ -1367,7 +1395,7 @@ class ArmTarget extends Target {
 
     private gnu_parseRefLines(lines: string[]): string[] {
 
-        const resultList: Set<string> = new Set();
+        const resultList: Set<string> = new Set<string>();
 
         for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
             const _line = lines[lineIndex];
