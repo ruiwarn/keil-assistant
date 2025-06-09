@@ -16,6 +16,33 @@ import { Time } from '../lib/node_utility/Time';
 import { isArray } from 'util';
 import { CmdLineHandler } from './CmdLineHandler';
 
+function showMessage(message: string, type: 'info' | 'warning' | 'error' = 'info', timeout = 1000) {
+    const options = { modal: false };
+    let promise: Thenable<string | undefined>;
+    
+    switch(type) {
+        case 'info':
+            promise = vscode.window.showInformationMessage(message, options);
+            break;
+        case 'warning':
+            promise = vscode.window.showWarningMessage(message, options);
+            break;
+        case 'error':
+            promise = vscode.window.showErrorMessage(message, options);
+            break;
+    }
+
+    // 设置定时器自动关闭消息
+    setTimeout(() => {
+        promise.then(result => {
+            if (result) {
+                // 如果消息还在显示，则关闭它
+                vscode.commands.executeCommand('workbench.action.closeMessages');
+            }
+        });
+    }, timeout);
+}
+
 export function activate(context: vscode.ExtensionContext) {
 
     console.log('---- keil-assistant actived ----');
@@ -64,7 +91,7 @@ export function activate(context: vscode.ExtensionContext) {
         if (target) {
             target.build();
         } else {
-            vscode.window.showWarningMessage('请先选择一个工程！');
+            showMessage('请先选择一个工程！', 'warning');
         }
     }));
 
@@ -73,7 +100,7 @@ export function activate(context: vscode.ExtensionContext) {
         if (target) {
             target.rebuild();
         } else {
-            vscode.window.showWarningMessage('请先选择一个工程！');
+            showMessage('请先选择一个工程！', 'warning');
         }
     }));
 
@@ -82,7 +109,7 @@ export function activate(context: vscode.ExtensionContext) {
         if (target) {
             target.download();
         } else {
-            vscode.window.showWarningMessage('请先选择一个工程！');
+            showMessage('请先选择一个工程！', 'warning');
         }
     }));
 
@@ -94,7 +121,7 @@ export function activate(context: vscode.ExtensionContext) {
             const allFiles = [...uvprojFiles, ...uvprojxFiles];
 
             if (allFiles.length === 0) {
-                vscode.window.showInformationMessage('工作区内没有找到 Keil 工程文件。');
+                showMessage('工作区内没有找到 Keil 工程文件。', 'info');
                 return;
             }
 
@@ -120,12 +147,13 @@ export function activate(context: vscode.ExtensionContext) {
             if (hasC51Project) {
                 const c51Path = vscode.workspace.getConfiguration('KeilAssistant.C51').get<string>('Uv4Path');
                 if (!c51Path) {
-                    vscode.window.showErrorMessage(
+                    showMessage(
                         '请先设置 C51 UV4 路径！\n' +
                         '1. 打开设置 (Ctrl+,)\n' +
                         '2. 搜索 "KeilAssistant.C51.Uv4Path"\n' +
                         '3. 设置 C51 UV4.exe 的绝对路径\n' +
-                        '示例路径：C:\\Keil_v5\\UV4\\UV4.exe'
+                        '示例路径：C:\\Keil_v5\\UV4\\UV4.exe',
+                        'error'
                     );
                     return;
                 }
@@ -134,12 +162,13 @@ export function activate(context: vscode.ExtensionContext) {
             if (hasArmProject) {
                 const mdkPath = vscode.workspace.getConfiguration('KeilAssistant.MDK').get<string>('Uv4Path');
                 if (!mdkPath) {
-                    vscode.window.showErrorMessage(
+                    showMessage(
                         '请先设置 MDK UV4 路径！\n' +
                         '1. 打开设置 (Ctrl+,)\n' +
                         '2. 搜索 "KeilAssistant.MDK.Uv4Path"\n' +
                         '3. 设置 MDK UV4.exe 的绝对路径\n' +
-                        '示例路径：C:\\Keil_v5\\UV4\\UV4.exe'
+                        '示例路径：C:\\Keil_v5\\UV4\\UV4.exe',
+                        'error'
                     );
                     return;
                 }
@@ -149,7 +178,7 @@ export function activate(context: vscode.ExtensionContext) {
                 // 如果只找到一个工程文件，则自动打开
                 const uvPrjPath = allFiles[0].fsPath;
                 await prjExplorer.openProject(uvPrjPath);
-                vscode.window.showInformationMessage('Keil 工程加载完成！');
+                showMessage('Keil 工程加载完成！', 'info');
             } else {
                 // 如果找到多个工程文件，则弹出列表让用户选择
                 const items = allFiles.map(file => ({
@@ -165,11 +194,11 @@ export function activate(context: vscode.ExtensionContext) {
                 if (selected) {
                     const uvPrjPath = selected.uri.fsPath;
                     await prjExplorer.openProject(uvPrjPath);
-                    vscode.window.showInformationMessage('Keil 工程加载完成！');
+                    showMessage('Keil 工程加载完成！', 'info');
                 }
             }
         } catch (error) {
-            vscode.window.showErrorMessage(`打开工程失败！错误信息: ${(<Error>error).message}`);
+            showMessage(`打开工程失败！错误信息: ${(<Error>error).message}`, 'error');
         }
     }));
 
@@ -446,7 +475,7 @@ class KeilProject implements IView, KeilProjectInfo {
             } else {
                 // Use type guard for message access
                 const message = err instanceof Error ? err.message : String(err);
-                vscode.window.showErrorMessage(`reload project failed !, msg: ${message}`);
+                showMessage(`reload project failed !, msg: ${message}`, 'error');
             }
         }
     }
@@ -1578,7 +1607,7 @@ class ProjectExplorer implements vscode.TreeDataProvider<IView>, vscode.Disposab
                         await this.openProject(uvFile.path);
                     } catch (error) {
                         const message = error instanceof Error ? error.message : String(error);
-                        vscode.window.showErrorMessage(`open project: '${uvFile.name}' failed !, msg: ${message}`);
+                        showMessage(`open project: '${uvFile.name}' failed !, msg: ${message}`, 'error');
                     }
                 }
             }
@@ -1656,7 +1685,7 @@ class ProjectExplorer implements vscode.TreeDataProvider<IView>, vscode.Disposab
             if (this.currentActiveProject) {
                 return this.currentActiveProject.getActiveTarget();
             } else {
-                vscode.window.showWarningMessage('Not found any active project !');
+                showMessage('Not found any active project !', 'warning');
             }
         }
     }
@@ -1677,7 +1706,6 @@ class ProjectExplorer implements vscode.TreeDataProvider<IView>, vscode.Disposab
                     const file = new File(node_path.normalize(source.file.path));
 
                     if (file.IsFile()) { // file exist, open it
-
                         let isPreview = true;
 
                         if (this.itemClickInfo &&
@@ -1693,9 +1721,8 @@ class ProjectExplorer implements vscode.TreeDataProvider<IView>, vscode.Disposab
                         };
 
                         vscode.window.showTextDocument(vscode.Uri.parse(file.ToUri()), { preview: isPreview });
-
                     } else {
-                        vscode.window.showWarningMessage(`Not found file: ${source.file.path}`);
+                        showMessage(`Not found file: ${source.file.path}`, 'warning');
                     }
                 }
                 break;

@@ -2,6 +2,11 @@
 
 All notable changes to the "keil-assistant-new" extension will be documented in this file.
 
+## [2.1.5] - 2025-06-09
+
+### 优化改进 ✨
+- 插件的消息弹窗1s后自动关闭
+
 ## [2.1.3] - 2025-05-09
 
 ### 修复问题 🔧

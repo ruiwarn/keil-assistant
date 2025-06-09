@@ -2,7 +2,7 @@
     "name": "keil-assistant-new",
     "displayName": "Keil Assistant New",
     "description": "An assistant for Keil uVision (Forked and maintained)",
-    "version": "2.1.3",
+    "version": "2.1.5",
     "publisher": "candycium",
     "author": {
         "name": "Rui Wang"
