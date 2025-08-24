@@ -736,8 +736,27 @@ abstract class Target implements IView {
 
     private updateCppProperties() {
 
-        // c_cpp_properties.json should also be in the project-specific global storage
-        const proFile = new File(node_path.join(this.project.projectStorageDir.path, 'c_cpp_properties.json'));
+        // c_cpp_properties.json should be in the workspace .vscode directory for C/C++ extension compatibility
+        let vscodeDir: string;
+        if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
+            vscodeDir = node_path.join(vscode.workspace.workspaceFolders[0].uri.fsPath, '.vscode');
+        } else {
+            // Fallback to project directory if no workspace
+            vscodeDir = node_path.join(this.project.uvprjFile.dir, '.vscode');
+        }
+        
+        // Ensure .vscode directory exists
+        try {
+            if (!fs.existsSync(vscodeDir)) {
+                fs.mkdirSync(vscodeDir, { recursive: true });
+            }
+        } catch (error) {
+            this.project.logger.log(`[ERROR] Failed to create .vscode directory at ${vscodeDir}: ${error}`);
+            // Fallback to global storage if .vscode creation fails
+            vscodeDir = this.project.projectStorageDir.path;
+        }
+
+        const proFile = new File(node_path.join(vscodeDir, 'c_cpp_properties.json'));
         let obj: any;
 
         if (proFile.IsFile()) {
@@ -895,13 +914,9 @@ abstract class Target implements IView {
         args.push('-o', this.uv4LogFile.path);
         args = args.concat(commands);
 
-        const isCmd = /cmd.exe$/i.test(vscode.env.shell);
-        const quote = isCmd ? '"' : '\'';
-        const invokePrefix = isCmd ? '' : '& ';
-        const cmdPrefixSuffix = isCmd ? '"' : '';
-
-        let commandLine = invokePrefix + this.quoteString(resManager.getBuilderExe(), quote) + ' ';
-        commandLine += args.map((arg) => { return this.quoteString(arg, quote); }).join(' ');
+        // For VSCode 1.103+ compatibility, we use the command and args array approach
+        // instead of building a single command line string
+        const builderExe = resManager.getBuilderExe();
 
         // use task
         if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
@@ -914,7 +929,9 @@ abstract class Target implements IView {
             // Using TaskScope.Workspace as project-specific details are in definition
             const task = new vscode.Task(taskDefinition, vscode.TaskScope.Workspace, name, 'shell'); 
             const options: vscode.ShellExecutionOptions = { cwd: this.project.uvprjFile.dir };
-            task.execution = new vscode.ShellExecution(cmdPrefixSuffix + commandLine + cmdPrefixSuffix, options);
+            
+            // Use the command + args approach for better VSCode 1.103+ compatibility
+            task.execution = new vscode.ShellExecution(builderExe, args, options);
             task.isBackground = false;
             // task.problemMatchers = this.getProblemMatcher(); // We will handle diagnostics manually
 
@@ -954,7 +971,7 @@ abstract class Target implements IView {
 
 
         } else {
-
+            // Fallback for when no workspace is available - use terminal
             const index = vscode.window.terminals.findIndex((ter) => {
                 return ter.name === name;
             });
@@ -966,7 +983,17 @@ abstract class Target implements IView {
 
             const terminal = vscode.window.createTerminal(name);
             terminal.show();
-            terminal.sendText(commandLine);
+            
+            // Build command line for terminal execution
+            const isCmd = /cmd.exe$/i.test(vscode.env.shell);
+            const quote = isCmd ? '"' : '\'';
+            const invokePrefix = isCmd ? '' : '& ';
+            const cmdPrefixSuffix = isCmd ? '"' : '';
+
+            let commandLine = invokePrefix + this.quoteString(builderExe, quote) + ' ';
+            commandLine += args.map((arg) => { return this.quoteString(arg, quote); }).join(' ');
+            
+            terminal.sendText(cmdPrefixSuffix + commandLine + cmdPrefixSuffix);
         }
     }
 

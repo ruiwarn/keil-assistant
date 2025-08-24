@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__claude-context__index_codebase",
+      "mcp__claude-context__search_code",
+      "mcp__Serena__list_dir",
+      "mcp__Serena__activate_project",
+      "mcp__Serena__search_for_pattern",
+      "Bash(npm run compile:*)",
+      "WebFetch(domain:github.com)",
+      "Bash(npm run lint)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

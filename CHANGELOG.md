@@ -2,6 +2,12 @@
 
 All notable changes to the "keil-assistant-new" extension will be documented in this file.
 
+## [2.1.6] - 2025-01-24
+
+### 修复问题 🔧
+- 修复 VSCode 1.103+ 版本兼容性问题：调整 Shell 任务执行参数处理方式，解决"实时系统找不到指定路径"的编译错误
+- 修复 c_cpp_properties.json 文件位置变更导致的 IntelliSense 问题：确保文件生成在工作区 .vscode 目录中，解决代码波浪线报错问题
+
 ## [2.1.5] - 2025-06-09
 
 ### 优化改进 ✨
