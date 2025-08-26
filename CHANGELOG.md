@@ -2,6 +2,25 @@
 
 All notable changes to the "keil-assistant-new" extension will be documented in this file.
 
+## [2.1.7] - 2025-08-26
+
+### 重大修复 🔧
+- **修复**: Keil 系统头文件路径检测失败导致 IntelliSense 功能异常的问题
+- **增强**: 全新的智能头文件路径检测算法，支持多种 Keil 安装场景：
+  - 完整 Keil V5 安装（ARMCC + ARMCLANG 双编译器）
+  - 不完整 Keil V5 安装（仅安装 ARMCLANG 编译器）  
+  - Keil V6 版本兼容支持（AC6 目录结构）
+  - 多重 fallback 机制确保路径检测成功
+- **改进**: 新增详细的调试日志输出，便于问题排查和诊断
+- **修复**: 解决 c_cpp_properties.json 中缺少系统头文件路径导致的代码智能提示失效问题
+- **提升**: 显著改善 VSCode 中 Keil 项目的 IntelliSense 和代码补全体验
+
+### 技术细节 📝
+- 智能检测 ARMCC 目录存在性，自适应选择合适的编译器路径
+- 支持从 `XXX\UV4.exe` 路径自动推导系统头文件位置
+- 兜底机制：当所有检测都失败时，使用 ARMCC 作为最兼容的选择
+- 详细日志记录每个检测步骤，方便用户和开发者调试
+
 ## [2.1.6] - 2025-01-24
 
 ### 修复问题 🔧

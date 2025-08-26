@@ -1511,17 +1511,141 @@ class ArmTarget extends Target {
     }
 
     protected getSystemIncludes(target: any): string[] | undefined {
-        const exeFile = new File(ResourceManager.getInstance().getArmUV4Path());
-        if (exeFile.IsFile()) {
-            const toolName = target['uAC6'] === '1' ? 'ARMCLANG' : 'ARMCC';
-            const incDir = new File(`${node_path.dirname(exeFile.dir)}${File.sep}ARM${File.sep}${toolName}${File.sep}include`);
-            if (incDir.IsDir()) {
-                return [incDir.path].concat(
-                    incDir.GetList(File.EMPTY_FILTER).map((dir) => { return dir.path; }));
-            }
-            return [incDir.path];
+        const rawPath = ResourceManager.getInstance().getArmUV4Path();
+        this.project.logger.log(`[DEBUG] ========== Keil Include Path Detection Start ==========`);
+        this.project.logger.log(`[DEBUG] Raw UV4 Path from config: '${rawPath}'`);
+        this.project.logger.log(`[DEBUG] Raw path length: ${rawPath.length}`);
+        this.project.logger.log(`[DEBUG] Raw path char codes: [${Array.from(rawPath).map(c => c.charCodeAt(0)).join(',')}]`);
+        
+        const exeFile = new File(rawPath);
+        this.project.logger.log(`[DEBUG] File object path: '${exeFile.path}'`);
+        this.project.logger.log(`[DEBUG] File exists check: ${exeFile.IsExist()}`);
+        this.project.logger.log(`[DEBUG] File isFile check: ${exeFile.IsFile()}`);
+        
+        if (!exeFile.IsFile()) {
+            this.project.logger.log(`[ERROR] UV4.exe not found at: ${exeFile.path}`);
+            this.project.logger.log(`[ERROR] ========== Detection Failed - UV4 Not Found ==========`);
+            this.project.logger.log(`[ERROR] Keil UV4 路径配置错误，请检查以下问题：`);
+            this.project.logger.log(`[ERROR] 1. 路径是否正确：${rawPath}`);
+            this.project.logger.log(`[ERROR] 2. 路径末尾是否有多余的空格`);
+            this.project.logger.log(`[ERROR] 3. UV4.exe 文件是否真实存在`);
+            this.project.logger.log(`[ERROR] 4. 是否有足够的文件访问权限`);
+            this.project.logger.log(`[ERROR] 请在 VSCode 设置中重新配置 'KeilAssistant.MDK.Uv4Path' 的值`);
+            return undefined;
         }
-        return undefined;
+        
+        const keilRoot = node_path.dirname(exeFile.dir); // C:\Keil_v5
+        this.project.logger.log(`[DEBUG] Keil Root Directory: ${keilRoot}`);
+        this.project.logger.log(`[DEBUG] Project uAC6 flag: ${target['uAC6']}`);
+        
+        // 步骤1: 检测ARMCC目录是否存在，判断是否为完整的V5安装
+        const armccDir = new File(`${keilRoot}${File.sep}ARM${File.sep}ARMCC${File.sep}include`);
+        const armclangDir = new File(`${keilRoot}${File.sep}ARM${File.sep}ARMCLANG${File.sep}include`);
+        const ac6Dir = new File(`${keilRoot}${File.sep}ARM${File.sep}AC6${File.sep}include`); // V6兼容
+        
+        const hasARMCC = armccDir.IsDir();
+        const hasARMCLANG = armclangDir.IsDir();
+        const hasAC6 = ac6Dir.IsDir();
+        
+        this.project.logger.log(`[DEBUG] Directory existence check:`);
+        this.project.logger.log(`[DEBUG]   - ARMCC:    ${armccDir.path} → ${hasARMCC ? 'EXISTS' : 'NOT FOUND'}`);
+        this.project.logger.log(`[DEBUG]   - ARMCLANG: ${armclangDir.path} → ${hasARMCLANG ? 'EXISTS' : 'NOT FOUND'}`);
+        this.project.logger.log(`[DEBUG]   - AC6:      ${ac6Dir.path} → ${hasAC6 ? 'EXISTS' : 'NOT FOUND'}`);
+        
+        let selectedToolName: string;
+        let selectionReason: string;
+        
+        // 步骤2: 智能选择工具链
+        if (hasARMCC) {
+            // 完整V5安装，使用标准uAC6判断逻辑
+            selectedToolName = target['uAC6'] === '1' ? 'ARMCLANG' : 'ARMCC';
+            selectionReason = `Standard V5 installation detected with ARMCC available, using uAC6 flag logic`;
+            this.project.logger.log(`[INFO] ${selectionReason}: ${selectedToolName}`);
+        } else if (hasARMCLANG) {
+            // 只有ARMCLANG，可能是V6或不完整V5安装
+            selectedToolName = 'ARMCLANG';
+            selectionReason = `ARMCLANG-only installation detected (V6 or incomplete V5)`;
+            this.project.logger.log(`[INFO] ${selectionReason}: ${selectedToolName}`);
+        } else if (hasAC6) {
+            // V6版本特有路径
+            selectedToolName = 'AC6';
+            selectionReason = `Keil V6 installation detected with AC6 directory`;
+            this.project.logger.log(`[INFO] ${selectionReason}: ${selectedToolName}`);
+        } else {
+            // 所有路径都不存在，兜底使用ARMCC
+            selectedToolName = 'ARMCC';
+            selectionReason = `No compiler directories found, fallback to ARMCC (most compatible)`;
+            this.project.logger.log(`[WARN] ${selectionReason}: ${selectedToolName}`);
+        }
+        
+        // 步骤3: 构建目标路径并验证
+        const targetIncDir = new File(`${keilRoot}${File.sep}ARM${File.sep}${selectedToolName}${File.sep}include`);
+        this.project.logger.log(`[DEBUG] Target include directory: ${targetIncDir.path}`);
+        
+        if (targetIncDir.IsDir()) {
+            this.project.logger.log(`[SUCCESS] Target directory exists, scanning for subdirectories...`);
+            try {
+                const subDirs = targetIncDir.GetList(File.EMPTY_FILTER).map((dir) => dir.path);
+                const allPaths = [targetIncDir.path].concat(subDirs);
+                this.project.logger.log(`[SUCCESS] Found ${allPaths.length} include paths:`);
+                allPaths.forEach((path, index) => {
+                    this.project.logger.log(`[SUCCESS]   ${index + 1}. ${path}`);
+                });
+                this.project.logger.log(`[DEBUG] ========== Detection Success ==========`);
+                return allPaths;
+            } catch (error) {
+                this.project.logger.log(`[ERROR] Failed to scan subdirectories in ${targetIncDir.path}: ${error}`);
+                this.project.logger.log(`[FALLBACK] Returning main directory only: ${targetIncDir.path}`);
+                return [targetIncDir.path];
+            }
+        } else {
+            // 步骤4: 目标路径不存在，尝试所有可能的fallback路径
+            this.project.logger.log(`[WARN] Target directory does not exist: ${targetIncDir.path}`);
+            this.project.logger.log(`[DEBUG] Trying all possible fallback paths...`);
+            
+            const fallbackPaths = [
+                { path: `${keilRoot}${File.sep}ARM${File.sep}ARMCLANG${File.sep}include`, name: 'ARMCLANG' },
+                { path: `${keilRoot}${File.sep}ARM${File.sep}ARMCC${File.sep}include`, name: 'ARMCC' },
+                { path: `${keilRoot}${File.sep}ARM${File.sep}AC6${File.sep}include`, name: 'AC6' }
+            ];
+            
+            for (let i = 0; i < fallbackPaths.length; i++) {
+                const { path: fallbackPath, name: toolName } = fallbackPaths[i];
+                const fallbackDir = new File(fallbackPath);
+                const exists = fallbackDir.IsDir();
+                this.project.logger.log(`[DEBUG] Fallback ${i + 1}/3 - ${toolName}: ${fallbackPath} → ${exists ? 'EXISTS' : 'NOT FOUND'}`);
+                
+                if (exists) {
+                    this.project.logger.log(`[SUCCESS] Found working fallback path: ${fallbackPath}`);
+                    try {
+                        const subDirs = fallbackDir.GetList(File.EMPTY_FILTER).map((dir) => dir.path);
+                        const allPaths = [fallbackDir.path].concat(subDirs);
+                        this.project.logger.log(`[SUCCESS] Fallback returned ${allPaths.length} paths:`);
+                        allPaths.forEach((path, index) => {
+                            this.project.logger.log(`[SUCCESS]   ${index + 1}. ${path}`);
+                        });
+                        this.project.logger.log(`[DEBUG] ========== Detection Success (Fallback) ==========`);
+                        return allPaths;
+                    } catch (error) {
+                        this.project.logger.log(`[ERROR] Failed to scan fallback directory ${fallbackPath}: ${error}`);
+                        this.project.logger.log(`[FALLBACK] Returning fallback directory only: ${fallbackPath}`);
+                        return [fallbackPath];
+                    }
+                }
+            }
+            
+            // 步骤5: 最终兜底 - 所有路径都不存在，返回ARMCC路径
+            const finalFallbackPath = `${keilRoot}${File.sep}ARM${File.sep}ARMCC${File.sep}include`;
+            this.project.logger.log(`[WARN] ========== All Paths Failed ==========`);
+            this.project.logger.log(`[WARN] No valid include directories found in Keil installation`);
+            this.project.logger.log(`[WARN] This may indicate:`);
+            this.project.logger.log(`[WARN]   1. Incomplete Keil installation`);
+            this.project.logger.log(`[WARN]   2. Non-standard installation directory structure`);
+            this.project.logger.log(`[WARN]   3. Missing ARM compiler components`);
+            this.project.logger.log(`[WARN] Final fallback: returning ARMCC path (most compatible): ${finalFallbackPath}`);
+            this.project.logger.log(`[DEBUG] ========== Detection Completed (Final Fallback) ==========`);
+            return [finalFallbackPath];
+        }
     }
 
     protected getIncString(target: any): string {
