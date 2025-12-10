@@ -9,7 +9,9 @@
       "Bash(npm run compile:*)",
       "WebFetch(domain:github.com)",
       "Bash(npm run lint)",
-      "mcp__tavily-mcp__tavily-extract"
+      "mcp__tavily-mcp__tavily-extract",
+      "Bash(npm run vscode:prepublish)",
+      "Bash(git add:*)"
     ],
     "deny": [],
     "ask": []

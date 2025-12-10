@@ -168,6 +168,10 @@ export function activate(context: vscode.ExtensionContext) {
                 if (xmlContent.includes('TargetOption') && xmlContent.includes('Target51') && xmlContent.includes('C51')) {
                     hasC51Project = true;
                 }
+                // 检查是否是 C251 工程
+                if (xmlContent.includes('TargetOption') && xmlContent.includes('Target251') && xmlContent.includes('C251')) {
+                    hasC51Project = true; // 使用 C51 工具链路径
+                }
                 // 检查是否是 ARM 工程
                 if (xmlContent.includes('TargetOption') && (xmlContent.includes('TargetCommonOption') || xmlContent.includes('TargetArmAds'))) {
                     hasArmProject = true;
@@ -378,6 +382,7 @@ class FileGroup implements IView {
 interface KeilProjectInfo {
 
     prjID: string;
+    label: string;
 
     projectStorageDir: File; // Renamed from vscodeDir
 
@@ -570,9 +575,18 @@ class KeilProject implements IView, KeilProjectInfo {
         }
     }
 
-    setActiveTarget(tName: string) {
-        if (tName !== this.activeTargetName) {
-            this.activeTargetName = tName;
+    async setActiveTarget(tName: string) {
+        const target = this.getTargetByName(tName);
+        if (!target) {
+            return;
+        }
+
+        const hasChanged = tName !== this.activeTargetName;
+        this.activeTargetName = tName;
+
+        await target.applyCppConfigurationSelection();
+
+        if (hasChanged) {
             this.notifyUpdateView(); // notify data changed
         }
     }
@@ -586,6 +600,20 @@ class KeilProject implements IView, KeilProjectInfo {
         else if (this.targetList.length > 0) {
             return this.targetList[0];
         }
+    }
+
+    async applyActiveCppConfiguration(): Promise<void> {
+        const activeTarget = this.getActiveTarget();
+        if (!activeTarget) {
+            return;
+        }
+
+        if (!this.activeTargetName) {
+            this.activeTargetName = activeTarget.targetName;
+            this.notifyUpdateView();
+        }
+
+        await activeTarget.applyCppConfigurationSelection();
     }
 
     getChildViews(): IView[] | undefined {
@@ -655,7 +683,7 @@ abstract class Target implements IView {
         this.targetName = targetDOM['TargetName'];
         this.label = this.targetName;
         this.tooltip = this.targetName;
-        this.cppConfigName = this.targetName;
+        this.cppConfigName = Target.buildCppConfigName(prjInfo.label, this.targetName);
         this.includes = new Set();
         this.defines = new Set();
         this.fGroups = [];
@@ -680,25 +708,44 @@ abstract class Target implements IView {
         });
     }
 
+    private static sanitizeConfigNamePart(raw: string): string {
+        return raw.replace(/[\\/:*?"<>|]/g, '_').replace(/\s+/g, ' ').trim();
+    }
+
+    private static buildCppConfigName(projectLabel: string, targetName: string): string {
+        const projectPart = Target.sanitizeConfigNamePart(projectLabel);
+        const targetPart = Target.sanitizeConfigNamePart(targetName);
+
+        if (projectPart && targetPart) {
+            return `${projectPart}_${targetPart}`;
+        }
+
+        return projectPart || targetPart || 'default';
+    }
+
     on(event: 'dataChanged', listener: () => void): void;
     on(event: any, listener: () => void): void {
         this._event.on(event, listener);
     }
 
     static async getInstance(prjInfo: KeilProjectInfo, uvInfo: uVisonInfo, targetDOM: any): Promise<Target> {
-        // 检查是否是 C51 工程
+        // 检查是否是 C51/C251/ARM 工程
         const isC51Project = targetDOM['TargetOption'] && 
                             targetDOM['TargetOption']['Target51'] && 
                             targetDOM['TargetOption']['Target51']['C51'];
-
-        // 检查是否是 ARM 工程
+        const isC251Project = targetDOM['TargetOption'] &&
+                            targetDOM['TargetOption']['Target251'] &&
+                            targetDOM['TargetOption']['Target251']['C251'];
         const isArmProject = targetDOM['TargetOption'] && 
                             (targetDOM['TargetOption']['TargetCommonOption'] || 
                              targetDOM['TargetOption']['TargetArmAds']);
 
-        if (isC51Project && !isArmProject) {
+        if ((isC51Project || isC251Project) && !isArmProject) {
+            if (isC251Project) {
+                return new C251Target(prjInfo, uvInfo, targetDOM);
+            }
             return new C51Target(prjInfo, uvInfo, targetDOM);
-        } else if (isArmProject && !isC51Project) {
+        } else if (isArmProject && !isC51Project && !isC251Project) {
             return new ArmTarget(prjInfo, uvInfo, targetDOM);
         } else {
             // 如果无法确定工程类型，弹出选择对话框
@@ -770,8 +817,18 @@ abstract class Target implements IView {
             obj = this.getDefCppProperties();
         }
 
-        const configList: any[] = obj['configurations'];
-        const index = configList.findIndex((conf) => { return conf.name === this.cppConfigName; });
+        let configList: any[] = Array.isArray(obj['configurations']) ? obj['configurations'] : [];
+        obj['configurations'] = configList;
+
+        const legacyIndex = configList.findIndex((conf) => { return conf.name === this.targetName; });
+        let index = configList.findIndex((conf) => { return conf.name === this.cppConfigName; });
+
+        if (index === -1 && legacyIndex !== -1) {
+            index = legacyIndex;
+            configList[index]['name'] = this.cppConfigName; // migrate legacy name to avoid collisions
+        } else if (index !== -1 && legacyIndex !== -1 && legacyIndex !== index) {
+            configList.splice(legacyIndex, 1); // remove redundant legacy entry
+        }
 
         if (index === -1) {
             configList.push({
@@ -786,6 +843,16 @@ abstract class Target implements IView {
         }
 
         proFile.Write(JSON.stringify(obj, undefined, 4));
+    }
+
+    public async applyCppConfigurationSelection(): Promise<void> {
+        try {
+            this.updateCppProperties(); // ensure configuration exists and is current
+            await vscode.commands.executeCommand('C_Cpp.ConfigurationSelect', this.cppConfigName);
+        } catch (error) {
+            const msg = error instanceof Error ? error.message : String(error);
+            this.project.logger.log(`[WARN] Failed to select C/C++ configuration '${this.cppConfigName}': ${msg}`);
+        }
     }
 
     async load(): Promise<void> {
@@ -908,6 +975,11 @@ abstract class Target implements IView {
 
     private runTask(name: string, commands: string[]) {
 
+        if (vscode.env.remoteName === 'wsl') {
+            showMessage('Keil Assistant 检测到当前 VS Code 运行在 WSL 会话中，Keil/UV4 只能在 Windows 环境执行。请在 Windows 会话下打开工程或将终端切换到 PowerShell/CMD。', 'error', 4000);
+            return;
+        }
+
         const resManager = ResourceManager.getInstance();
         let args: string[] = [];
 
@@ -927,11 +999,8 @@ abstract class Target implements IView {
                 targetName: this.targetName      // Add targetName to definition
             };
             // Using TaskScope.Workspace as project-specific details are in definition
-            const task = new vscode.Task(taskDefinition, vscode.TaskScope.Workspace, name, 'shell'); 
-            const options: vscode.ShellExecutionOptions = { cwd: this.project.uvprjFile.dir };
-            
-            // Use the command + args approach for better VSCode 1.103+ compatibility
-            task.execution = new vscode.ShellExecution(builderExe, args, options);
+            const task = new vscode.Task(taskDefinition, vscode.TaskScope.Workspace, name, 'keil-assistant');
+            task.execution = new vscode.ProcessExecution(builderExe, args, { cwd: this.project.uvprjFile.dir });
             task.isBackground = false;
             // task.problemMatchers = this.getProblemMatcher(); // We will handle diagnostics manually
 
@@ -1227,6 +1296,116 @@ class C51Target extends Target {
     protected getRebuildCommand(): string[] {
         const numCPUs = os.cpus().length;
         const jValue = Math.max(1, Math.min(numCPUs, 4)); // For C51, limit to 4 or numCPUs, whichever is smaller, but at least 1
+        return [
+            '--uv4Path', ResourceManager.getInstance().getC51UV4Path(),
+            '--prjPath', this.project.uvprjFile.path,
+            '--targetName', this.targetName,
+            '-c', `\${uv4Path} -r \${prjPath} -j${jValue} -t \${targetName}`
+        ];
+    }
+
+    protected getDownloadCommand(): string[] {
+        return [
+            '--uv4Path', ResourceManager.getInstance().getC51UV4Path(),
+            '--prjPath', this.project.uvprjFile.path,
+            '--targetName', this.targetName,
+            '-c', '${uv4Path} -f ${prjPath} -j0 -t ${targetName}'
+        ];
+    }
+}
+
+//===============================================
+
+class C251Target extends Target {
+
+    protected checkProject(target: any): Error | undefined {
+        if (target['TargetOption']['Target251'] === undefined ||
+            target['TargetOption']['Target251']['C251'] === undefined) {
+            return new Error(`This uVision project is not a C251 project, but has 'Target251' !`);
+        }
+    }
+
+    protected parseRefLines(_target: any, _lines: string[]): string[] {
+        return [];
+    }
+
+    protected getOutputFolder(_target: any): string | undefined {
+        return undefined;
+    }
+
+    protected getSysDefines(_target: any): string[] {
+        return [
+            '__C251__',
+            '__VSCODE_C251__',
+            'reentrant=',
+            'compact=',
+            'small=',
+            'large=',
+            'data=',
+            'idata=',
+            'pdata=',
+            'bdata=',
+            'xdata=',
+            'code=',
+            'bit=char',
+            'sbit=char',
+            'sfr=char',
+            'sfr16=int',
+            'sfr32=int',
+            'interrupt=',
+            'using=',
+            '_at_=',
+            '_priority_=',
+            '_task_='
+        ];
+    }
+
+    protected getSystemIncludes(_target: any): string[] | undefined {
+        const exeFile = new File(ResourceManager.getInstance().getC51UV4Path());
+        if (exeFile.IsFile()) {
+            return [
+                node_path.dirname(exeFile.dir) + File.sep + 'C251' + File.sep + 'INC'
+            ];
+        }
+        return undefined;
+    }
+
+    protected getIncString(target: any): string {
+        const target251 = target['TargetOption']['Target251']['C251'];
+        return target251['VariousControls']['IncludePath'];
+    }
+
+    protected getDefineString(target: any): string {
+        const target251 = target['TargetOption']['Target251']['C251'];
+        return target251['VariousControls']['Define'];
+    }
+
+    protected getGroups(target: any): any[] {
+        return target['Groups']['Group'] || [];
+    }
+
+    protected getProblemMatcher(): string[] { // This method is no longer used for diagnostics but kept for structure
+        return ['$c51'];
+    }
+
+    protected getDiagnosticRegex(): RegExp {
+        return /^([^()]+)\(([\d]+)\):\s+(error|warning):\s+(#\d+):\s+(.+)$/i;
+    }
+
+    protected getBuildCommand(): string[] {
+        const numCPUs = os.cpus().length;
+        const jValue = Math.max(1, Math.min(numCPUs, 4)); // Limit to 4 or CPU count
+        return [
+            '--uv4Path', ResourceManager.getInstance().getC51UV4Path(),
+            '--prjPath', this.project.uvprjFile.path,
+            '--targetName', this.targetName,
+            '-c', `\${uv4Path} -b \${prjPath} -j${jValue} -t \${targetName}`
+        ];
+    }
+
+    protected getRebuildCommand(): string[] {
+        const numCPUs = os.cpus().length;
+        const jValue = Math.max(1, Math.min(numCPUs, 4)); // Limit to 4 or CPU count
         return [
             '--uv4Path', ResourceManager.getInstance().getC51UV4Path(),
             '--prjPath', this.project.uvprjFile.path,
@@ -1762,33 +1941,101 @@ class ProjectExplorer implements vscode.TreeDataProvider<IView>, vscode.Disposab
     }
 
     async loadWorkspace() {
-        if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
-            const workspaceRoot = vscode.workspace.workspaceFolders[0].uri.fsPath;
-            const workspace = new File(workspaceRoot);
-            
-            if (workspace.IsDir()) {
-                const excludeList = ResourceManager.getInstance().getProjectExcludeList();
-                const workspaceFiles = workspace.GetList([/\.uvproj[x]?$/i], File.EMPTY_FILTER);
-                
-                // 获取工程文件位置列表并转换为相对路径
-                const locationFiles = ResourceManager.getInstance().getProjectFileLocationList()
-                    .map(loc => {
-                        const absolutePath = loc;
-                        const relativePath = node_path.relative(workspaceRoot, absolutePath);
-                        return new File(node_path.join(workspaceRoot, relativePath));
-                    });
-                
-                const uvList = workspaceFiles.concat(locationFiles)
-                    .filter((file) => { return !excludeList.includes(file.name); });
-                
-                for (const uvFile of uvList) {
-                    try {
-                        await this.openProject(uvFile.path);
-                    } catch (error) {
-                        const message = error instanceof Error ? error.message : String(error);
-                        showMessage(`open project: '${uvFile.name}' failed !, msg: ${message}`, 'error');
-                    }
+        if (!vscode.workspace.workspaceFolders || vscode.workspace.workspaceFolders.length === 0) {
+            return;
+        }
+
+        const workspaceRoot = vscode.workspace.workspaceFolders[0].uri.fsPath;
+        const excludeList = ResourceManager.getInstance().getProjectExcludeList();
+
+        const uvprojFiles = await vscode.workspace.findFiles('**/*.uvproj', '**/node_modules/**');
+        const uvprojxFiles = await vscode.workspace.findFiles('**/*.uvprojx', '**/node_modules/**');
+        const allFiles = [...uvprojFiles, ...uvprojxFiles];
+
+        // Normalize user-provided locations to absolute paths so relative entries are anchored to the workspace.
+        // Also expand directory entries to any uvproj/uvprojx inside them for better compatibility with README examples.
+        const workspaceRoots = (() => {
+            const roots: string[] = [];
+            if (vscode.workspace.workspaceFile && /^file:/.test(vscode.workspace.workspaceFile.toString())) {
+                roots.push(node_path.dirname(vscode.workspace.workspaceFile.fsPath));
+            }
+            if (vscode.workspace.workspaceFolders) {
+                for (const folder of vscode.workspace.workspaceFolders) {
+                    roots.push(folder.uri.fsPath);
                 }
+            }
+            return Array.from(new Set(roots.map(r => node_path.normalize(r))));
+        })();
+
+        const rawLocations = ResourceManager.getInstance().getProjectFileLocationList();
+        const resolvedLocationPaths: string[] = [];
+
+        for (const loc of rawLocations) {
+            if (!loc || loc.trim() === '') {
+                continue;
+            }
+            if (node_path.isAbsolute(loc)) {
+                resolvedLocationPaths.push(node_path.normalize(loc));
+            } else if (workspaceRoots.length > 0) {
+                for (const root of workspaceRoots) {
+                    resolvedLocationPaths.push(node_path.normalize(node_path.resolve(root, loc)));
+                }
+            } else {
+                // Fallback: no workspace roots, keep as-is
+                resolvedLocationPaths.push(node_path.normalize(loc));
+            }
+        }
+
+        const locationFiles = resolvedLocationPaths
+            .map(p => new File(p))
+            .flatMap(f => {
+                if (f.IsFile()) {
+                    return [/\.uvproj$/i, /\.uvprojx$/i].some(reg => reg.test(f.suffix)) ? [f] : [];
+                }
+                if (f.IsDir()) {
+                    return f.GetAll([/\.uvproj$/i, /\.uvprojx$/i], undefined).filter(sub => sub.IsFile());
+                }
+                return [];
+            });
+
+        const uvList = allFiles
+            .map(uri => uri.fsPath)
+            .concat(locationFiles.map(f => f.path))
+            .filter((p, index, arr) => arr.indexOf(p) === index) // dedupe
+            .map(p => new File(p))
+            .filter(f => !excludeList.includes(f.name));
+
+        if (uvList.length === 0) {
+            return; // 非 Keil 工程，静默跳过
+        }
+
+        if (uvList.length === 1) {
+            try {
+                await this.openProject(uvList[0].path);
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                showMessage(`open project: '${uvList[0].name}' failed !, msg: ${message}`, 'error');
+            }
+            return;
+        }
+
+        // 多个工程时让用户选择，和点击按钮的体验一致
+        const items = uvList.map(file => ({
+            label: vscode.workspace.asRelativePath(file.path, false),
+            description: file.path,
+            file
+        }));
+
+        const selected = await vscode.window.showQuickPick(items, {
+            placeHolder: '请选择一个 Keil 工程文件'
+        });
+
+        if (selected) {
+            try {
+                await this.openProject(selected.file.path);
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                showMessage(`open project: '${selected.file.name}' failed !, msg: ${message}`, 'error');
             }
         }
     }
@@ -1800,10 +2047,11 @@ class ProjectExplorer implements vscode.TreeDataProvider<IView>, vscode.Disposab
             await nPrj.load();
             nPrj.on('dataChanged', () => this.updateView());
             this.prjList.set(nPrj.prjID, nPrj);
-            if (this.currentActiveProject == undefined) {
-                this.currentActiveProject = nPrj;
-                this.currentActiveProject.active();
-            }
+            // Always activate the newly opened project to match user intent
+            this.currentActiveProject?.deactive();
+            this.currentActiveProject = nPrj;
+            this.currentActiveProject.active();
+            await this.currentActiveProject.applyActiveCppConfiguration();
             this.updateView();
             this.updateStatusBarVisibility();
             return nPrj;
@@ -1831,6 +2079,7 @@ class ProjectExplorer implements vscode.TreeDataProvider<IView>, vscode.Disposab
             this.currentActiveProject?.deactive();
             this.currentActiveProject = project;
             this.currentActiveProject.active();
+            await this.currentActiveProject.applyActiveCppConfiguration();
             this.updateView();
             this.updateStatusBarVisibility();
         }
@@ -1845,7 +2094,14 @@ class ProjectExplorer implements vscode.TreeDataProvider<IView>, vscode.Disposab
                 placeHolder: 'please select a target name for keil project'
             });
             if (targetName) {
-                prj.setActiveTarget(targetName);
+                if (this.currentActiveProject?.prjID !== prj.prjID) {
+                    this.currentActiveProject?.deactive();
+                    this.currentActiveProject = prj;
+                    this.currentActiveProject.active();
+                    this.updateStatusBarVisibility();
+                }
+                await prj.setActiveTarget(targetName);
+                this.updateView();
             }
         }
     }
