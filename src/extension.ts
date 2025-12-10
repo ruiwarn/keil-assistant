@@ -1952,9 +1952,51 @@ class ProjectExplorer implements vscode.TreeDataProvider<IView>, vscode.Disposab
         const uvprojxFiles = await vscode.workspace.findFiles('**/*.uvprojx', '**/node_modules/**');
         const allFiles = [...uvprojFiles, ...uvprojxFiles];
 
-        const locationFiles = ResourceManager.getInstance().getProjectFileLocationList()
-            .map(loc => new File(loc))
-            .filter(f => f.IsFile());
+        // Normalize user-provided locations to absolute paths so relative entries are anchored to the workspace.
+        // Also expand directory entries to any uvproj/uvprojx inside them for better compatibility with README examples.
+        const workspaceRoots = (() => {
+            const roots: string[] = [];
+            if (vscode.workspace.workspaceFile && /^file:/.test(vscode.workspace.workspaceFile.toString())) {
+                roots.push(node_path.dirname(vscode.workspace.workspaceFile.fsPath));
+            }
+            if (vscode.workspace.workspaceFolders) {
+                for (const folder of vscode.workspace.workspaceFolders) {
+                    roots.push(folder.uri.fsPath);
+                }
+            }
+            return Array.from(new Set(roots.map(r => node_path.normalize(r))));
+        })();
+
+        const rawLocations = ResourceManager.getInstance().getProjectFileLocationList();
+        const resolvedLocationPaths: string[] = [];
+
+        for (const loc of rawLocations) {
+            if (!loc || loc.trim() === '') {
+                continue;
+            }
+            if (node_path.isAbsolute(loc)) {
+                resolvedLocationPaths.push(node_path.normalize(loc));
+            } else if (workspaceRoots.length > 0) {
+                for (const root of workspaceRoots) {
+                    resolvedLocationPaths.push(node_path.normalize(node_path.resolve(root, loc)));
+                }
+            } else {
+                // Fallback: no workspace roots, keep as-is
+                resolvedLocationPaths.push(node_path.normalize(loc));
+            }
+        }
+
+        const locationFiles = resolvedLocationPaths
+            .map(p => new File(p))
+            .flatMap(f => {
+                if (f.IsFile()) {
+                    return [/\.uvproj$/i, /\.uvprojx$/i].some(reg => reg.test(f.suffix)) ? [f] : [];
+                }
+                if (f.IsDir()) {
+                    return f.GetAll([/\.uvproj$/i, /\.uvprojx$/i], undefined).filter(sub => sub.IsFile());
+                }
+                return [];
+            });
 
         const uvList = allFiles
             .map(uri => uri.fsPath)

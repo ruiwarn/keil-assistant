@@ -2,9 +2,10 @@
 
 All notable changes to the "keil-assistant-new" extension will be documented in this file.
 
-## [2.2.0] - 2025-12-10
+## [2.2.1] - 2025-12-10
 
 ### 新增功能 ✨
+
 - **智能C/C++配置管理**: 新增项目标签支持，C/C++配置名称现在使用"项目名_目标名"格式，避免多项目配置冲突
 - **自动配置切换**: 切换目标时自动应用对应的C/C++配置，无需手动选择
 - **增强的配置检测**: 自动检测并迁移旧版本配置，确保向后兼容
@@ -12,6 +13,7 @@ All notable changes to the "keil-assistant-new" extension will be documented in 
 - **WSL环境检测**: 新增WSL环境检测，当运行在WSL中时提供明确的错误提示
 
 ### 系统头文件检测重大优化 🔧
+
 - **全新智能检测算法**: 大幅改进Keil系统头文件路径检测机制
   - 支持完整Keil V5安装（ARMCC + ARMCLANG双编译器）
   - 支持不完整Keil V5安装（仅ARMCLANG编译器）
@@ -22,20 +24,23 @@ All notable changes to the "keil-assistant-new" extension will be documented in 
 - **错误诊断增强**: 当检测失败时提供详细的错误信息和解决建议
 
 ### 用户体验改进 🎯
+
 - **异步操作优化**: 目标切换和配置应用改为异步操作，避免界面阻塞
 - **配置自动应用**: 项目激活时自动应用对应的C/C++配置设置
 - **更好的错误处理**: 增强了异常捕获和错误提示，提升稳定性
 - **任务执行优化**: 使用ProcessExecution替代ShellExecution，提升任务执行的可靠性和性能
 
 ### 技术细节 📝
-- 新增`applyActiveCppConfiguration()`方法，实现配置的智能应用
-- 优化`setActiveTarget()`方法，支持异步操作和自动配置切换
-- 改进`getSystemIncludes()`方法，添加详细的调试输出和智能路径检测
-- 配置名称清理函数`sanitizeConfigNamePart()`，确保文件名合法
-- 新增`C251Target`类，完整支持C251项目类型
-- 任务执行改为使用`ProcessExecution`，避免Shell相关的问题
+
+- 新增 `applyActiveCppConfiguration()`方法，实现配置的智能应用
+- 优化 `setActiveTarget()`方法，支持异步操作和自动配置切换
+- 改进 `getSystemIncludes()`方法，添加详细的调试输出和智能路径检测
+- 配置名称清理函数 `sanitizeConfigNamePart()`，确保文件名合法
+- 新增 `C251Target`类，完整支持C251项目类型
+- 任务执行改为使用 `ProcessExecution`，避免Shell相关的问题
 
 ### 兼容性改进 🔗
+
 - **向后兼容**: 自动迁移旧版本的C/C++配置，无需用户手动调整
 - **WSL友好**: 明确提示WSL环境限制，引导用户正确使用环境
 - **VSCode兼容**: 优化任务执行机制，提升与新版本VSCode的兼容性
@@ -43,10 +48,11 @@ All notable changes to the "keil-assistant-new" extension will be documented in 
 ## [2.1.7] - 2025-08-26
 
 ### 重大修复 🔧
+
 - **修复**: Keil 系统头文件路径检测失败导致 IntelliSense 功能异常的问题
 - **增强**: 全新的智能头文件路径检测算法，支持多种 Keil 安装场景：
   - 完整 Keil V5 安装（ARMCC + ARMCLANG 双编译器）
-  - 不完整 Keil V5 安装（仅安装 ARMCLANG 编译器）  
+  - 不完整 Keil V5 安装（仅安装 ARMCLANG 编译器）
   - Keil V6 版本兼容支持（AC6 目录结构）
   - 多重 fallback 机制确保路径检测成功
 - **改进**: 新增详细的调试日志输出，便于问题排查和诊断
@@ -54,6 +60,7 @@ All notable changes to the "keil-assistant-new" extension will be documented in 
 - **提升**: 显著改善 VSCode 中 Keil 项目的 IntelliSense 和代码补全体验
 
 ### 技术细节 📝
+
 - 智能检测 ARMCC 目录存在性，自适应选择合适的编译器路径
 - 支持从 `XXX\UV4.exe` 路径自动推导系统头文件位置
 - 兜底机制：当所有检测都失败时，使用 ARMCC 作为最兼容的选择
@@ -62,22 +69,26 @@ All notable changes to the "keil-assistant-new" extension will be documented in 
 ## [2.1.6] - 2025-01-24
 
 ### 修复问题 🔧
+
 - 修复 VSCode 1.103+ 版本兼容性问题：调整 Shell 任务执行参数处理方式，解决"实时系统找不到指定路径"的编译错误
 - 修复 c_cpp_properties.json 文件位置变更导致的 IntelliSense 问题：确保文件生成在工作区 .vscode 目录中，解决代码波浪线报错问题
 
 ## [2.1.5] - 2025-06-09
 
 ### 优化改进 ✨
+
 - 插件的消息弹窗1s后自动关闭
 
 ## [2.1.3] - 2025-05-09
 
 ### 修复问题 🔧
-- 彻底解决VSCode“问题”面板中错误路径（特别是包含`..`的路径）显示不正确及无法跳转的问题，改为插件手动解析编译日志并使用绝对路径生成诊断信息。
-- 确保VSCode终端中Ctrl+点击错误路径（包括含`..`的路径）能够正确定位到源代码。
+
+- 彻底解决VSCode“问题”面板中错误路径（特别是包含 `..`的路径）显示不正确及无法跳转的问题，改为插件手动解析编译日志并使用绝对路径生成诊断信息。
+- 确保VSCode终端中Ctrl+点击错误路径（包括含 `..`的路径）能够正确定位到源代码。
 
 ### 优化改进 ✨
-- 将插件生成的日志文件 (`keil-assistant.log`, `uv4.log`) 及 `c_cpp_properties.json` 的存储位置从工作区`.vscode`目录迁移到VSCode全局插件存储区，并按项目ID进行隔离，保持工作区整洁。
+
+- 将插件生成的日志文件 (`keil-assistant.log`, `uv4.log`) 及 `c_cpp_properties.json` 的存储位置从工作区 `.vscode`目录迁移到VSCode全局插件存储区，并按项目ID进行隔离，保持工作区整洁。
 - 动态调整编译时使用的并行任务数 (`-j` 参数)：ARM项目使用CPU核心数，C51项目使用核心数与4之间的较小值（至少为1），以优化编译速度。
 
 ## [2.1.2]
