@@ -787,12 +787,12 @@ abstract class Target implements IView {
 
     private updateCppProperties() {
 
-        // c_cpp_properties.json should be in the workspace .vscode directory for C/C++ extension compatibility
+        // Place c_cpp_properties.json in the project-specific workspace folder (or project dir if no workspace)
         let vscodeDir: string;
-        if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
-            vscodeDir = node_path.join(vscode.workspace.workspaceFolders[0].uri.fsPath, '.vscode');
+        const projectFolder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(this.project.uvprjFile.path));
+        if (projectFolder) {
+            vscodeDir = node_path.join(projectFolder.uri.fsPath, '.vscode');
         } else {
-            // Fallback to project directory if no workspace
             vscodeDir = node_path.join(this.project.uvprjFile.dir, '.vscode');
         }
         
