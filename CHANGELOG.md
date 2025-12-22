@@ -2,6 +2,17 @@
 
 All notable changes to the "keil-assistant-new" extension will be documented in this file.
 
+## [2.3.0] - 2025-12-21
+
+### 新增功能 🚀
+
+- **GitHub Copilot Chat 集成**: 为插件新增 Language Model Tools 支持，使 GitHub Copilot 能够直接调用 Keil Assistant 功能
+  - **编译工具** (`keil-assistant_buildProject`): 支持编译或重新编译指定目标，实时返回编译结果和错误信息
+  - **项目信息工具** (`keil-assistant_getProjectInfo`): 获取项目详细信息，包括项目类型、目标列表、源文件等
+  - **自然语言交互**: 用户可以在 Copilot Chat 中用自然语言执行操作，如 "帮我构建项目"、"构建STC8A目标"
+  - **自动化迭代**: 编码代理可以通过调用工具实现 "编写-编译-修复" 的完整自动化开发流程，可获得详细的编译失败信息
+  - **工具可见性**: 所有工具自动在 VS Code 的 "配置工具" 界面显示，可以明确禁用工具使LLM不进行工具调用
+
 ## [2.2.1] - 2025-12-10
 
 ### 新增功能 ✨

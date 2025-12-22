@@ -4,6 +4,7 @@
 
 ## Highlight Features ✨
 
+- **🤖 AI-Assisted Development**: Integrated GitHub Copilot Chat Tools for natural language build control and project queries
 - **Smart Project Detection**: Automatically detects and loads Keil projects after opening workspace
 - **One-Click Build Experience**: New status bar button design for build, rebuild, and download operations
 - **Multi-Core Parallel Compilation**: Automatically detects CPU cores for optimal performance
@@ -18,18 +19,34 @@
 
 ## Smart Features 🤖
 
-### 1. Automatic Project Detection
+### 1. GitHub Copilot Integration (New in v2.3.0)
+
+> Requires GitHub Copilot extension
+
+![CopilotTools](./images/copilot-tools.png)
+
+Seamless collaboration with Copilot through Chat Tools:
+- **Natural Language Build**: Type "Build the project" or "Compile Debug target" in Copilot Chat
+- **Project Info Query**: Ask "What type of project is this?" or "List all build targets"
+- **Smart Error Diagnostics**: When build fails, Copilot automatically retrieves detailed error info and suggests fixes
+- **Automated Iteration**: Complete "Write-Compile-Fix" AI-assisted development workflow
+
+**Available Tools**:
+- `keil-assistant_buildProject` - Build or rebuild project targets
+- `keil-assistant_getProjectInfo` - Get detailed project information
+
+### 2. Automatic Project Detection
 - Auto-scans all Keil projects in workspace
 - Smart filtering of template and test projects
 - Custom project location list support
 
-### 2. Convenient Operation Bar
+### 3. Convenient Operation Bar
 ![build](./images/help.jpg)
 - Newly designed status bar button layout
 - Real-time compilation progress display
 - One-click target switching
 
-### 3. Intelligent Build Optimization
+### 4. Intelligent Build Optimization
 - Automatic CPU core detection
 - Smart compilation thread allocation
 - Cross-Module-Optimization (CMO) support
