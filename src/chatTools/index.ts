@@ -15,8 +15,8 @@ export function registerChatTools(context: vscode.ExtensionContext, projectExplo
     try {
         // 检查Language Model API是否可用
         if (!vscode.lm || !vscode.lm.registerTool) {
+            // 当前环境不支持LLM工具注册 输出警告到调试控制台 但不弹出窗口打扰用户
             console.warn('[Keil Assistant] Language Model API not available. Chat Tools will not be registered.');
-            vscode.window.showWarningMessage('Keil Assistant: Chat Tools require GitHub Copilot to be installed and enabled.');
             return;
         }
 
