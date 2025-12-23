@@ -118,8 +118,15 @@ export class BuildTool extends KeilChatTool {
                             isResolved = true;
                             clearTimeout(timeoutId);
                             disposable.dispose();
-                            outputChannel.appendLine(`[BuildTool] Build completed with exit code: ${event.exitCode || 0}`);
-                            resolve({ exitCode: event.exitCode || 0, target: targetObj });
+                            
+                            // 检查 exitCode 是否有效
+                            if (event.exitCode === undefined || event.exitCode === null) {
+                                outputChannel.appendLine('[BuildTool] Build ended with undefined exit code - task may have been cancelled or failed abnormally');
+                                reject(new Error('Build ended with undefined exit code'));
+                            } else {
+                                outputChannel.appendLine(`[BuildTool] Build completed with exit code: ${event.exitCode}`);
+                                resolve({ exitCode: event.exitCode, target: targetObj });
+                            }
                         }
                     }
                 });

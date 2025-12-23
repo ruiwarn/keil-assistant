@@ -734,6 +734,7 @@ abstract class Target implements IView {
 
     static async getInstance(prjInfo: KeilProjectInfo, uvInfo: uVisonInfo, targetDOM: any): Promise<Target> {
         // 检查是否是 C51/C251/ARM 工程
+        // 应该根据特定的工具链节点来判断: Target51, Target251, TargetArmAds
         const isC51Project = targetDOM['TargetOption'] && 
                             targetDOM['TargetOption']['Target51'] && 
                             targetDOM['TargetOption']['Target51']['C51'];
@@ -741,8 +742,7 @@ abstract class Target implements IView {
                             targetDOM['TargetOption']['Target251'] &&
                             targetDOM['TargetOption']['Target251']['C251'];
         const isArmProject = targetDOM['TargetOption'] && 
-                            (targetDOM['TargetOption']['TargetCommonOption'] || 
-                             targetDOM['TargetOption']['TargetArmAds']);
+                            targetDOM['TargetOption']['TargetArmAds'];
 
         if ((isC51Project || isC251Project) && !isArmProject) {
             if (isC251Project) {
