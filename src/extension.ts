@@ -211,11 +211,11 @@ export function activate(context: vscode.ExtensionContext) {
             }
 
             if (allFiles.length === 1) {
-                // 如果只找到一个工程文件，则自动打开
+                // 如果只找到一个工程文件，则自动打开并激活
                 const uvPrjPath = allFiles[0].fsPath;
                 await prjExplorer.openProject(uvPrjPath);
             } else {
-                // 如果找到多个工程文件，则弹出列表让用户选择
+                // 如果找到多个工程文件，则弹出列表让用户选择并激活
                 const items = allFiles.map(file => ({
                     label: vscode.workspace.asRelativePath(file),
                     description: file.fsPath,
@@ -228,7 +228,14 @@ export function activate(context: vscode.ExtensionContext) {
 
                 if (selected) {
                     const uvPrjPath = selected.uri.fsPath;
-                    await prjExplorer.openProject(uvPrjPath);
+                    const opened = await prjExplorer.openProject(uvPrjPath);
+                    if (!opened) {
+                        await prjExplorer.clearClosedProjectPath(uvPrjPath);
+                        const existing = prjExplorer.getProjectById(getMD5(uvPrjPath));
+                        if (existing) {
+                            await prjExplorer.activeProject(existing);
+                        }
+                    }
                 }
             }
         } catch (error) {
@@ -1890,6 +1897,8 @@ class ArmTarget extends Target {
 class ProjectExplorer implements vscode.TreeDataProvider<IView>, vscode.Disposable {
 
     private ItemClickCommand = 'Item.Click';
+    private readonly lastActiveProjectKey = 'keilAssistant.lastActiveProjectPath';
+    private readonly closedProjectPathsKey = 'keilAssistant.closedProjectPaths';
 
     // Allow undefined/null for root refresh
     onDidChangeTreeData: vscode.Event<IView | undefined | null>;
@@ -1951,6 +1960,8 @@ class ProjectExplorer implements vscode.TreeDataProvider<IView>, vscode.Disposab
 
         const workspaceRoot = vscode.workspace.workspaceFolders[0].uri.fsPath;
         const excludeList = ResourceManager.getInstance().getProjectExcludeList();
+        const lastActivePath = this.extensionContext.workspaceState.get<string>(this.lastActiveProjectKey);
+        const closedPaths = new Set(this.getClosedProjectPaths().map(p => node_path.normalize(p)));
 
         const uvprojFiles = await vscode.workspace.findFiles('**/*.uvproj', '**/node_modules/**');
         const uvprojxFiles = await vscode.workspace.findFiles('**/*.uvprojx', '**/node_modules/**');
@@ -2007,7 +2018,8 @@ class ProjectExplorer implements vscode.TreeDataProvider<IView>, vscode.Disposab
             .concat(locationFiles.map(f => f.path))
             .filter((p, index, arr) => arr.indexOf(p) === index) // dedupe
             .map(p => new File(p))
-            .filter(f => !excludeList.includes(f.name));
+            .filter(f => !excludeList.includes(f.name))
+            .filter(f => !closedPaths.has(node_path.normalize(f.path)));
 
         if (uvList.length === 0) {
             return; // 非 Keil 工程，静默跳过
@@ -2015,7 +2027,7 @@ class ProjectExplorer implements vscode.TreeDataProvider<IView>, vscode.Disposab
 
         if (uvList.length === 1) {
             try {
-                await this.openProject(uvList[0].path);
+                await this.openProject(uvList[0].path, true, false);
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error);
                 showMessage(`open project: '${uvList[0].name}' failed !, msg: ${message}`, 'error');
@@ -2023,28 +2035,65 @@ class ProjectExplorer implements vscode.TreeDataProvider<IView>, vscode.Disposab
             return;
         }
 
-        // 多个工程时让用户选择，和点击按钮的体验一致
-        const items = uvList.map(file => ({
-            label: vscode.workspace.asRelativePath(file.path, false),
-            description: file.path,
-            file
-        }));
-
-        const selected = await vscode.window.showQuickPick(items, {
-            placeHolder: '请选择一个 Keil 工程文件'
-        });
-
-        if (selected) {
+        // 多个工程时自动全部加载，最后打开的工程为当前工程
+        for (const file of uvList) {
             try {
-                await this.openProject(selected.file.path);
+                await this.openProject(file.path, false, false);
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error);
-                showMessage(`open project: '${selected.file.name}' failed !, msg: ${message}`, 'error');
+                showMessage(`open project: '${file.name}' failed !, msg: ${message}`, 'error');
+            }
+        }
+
+        if (lastActivePath) {
+            const normalized = node_path.normalize(lastActivePath);
+            const project = Array.from(this.prjList.values()).find(prj => node_path.normalize(prj.uvprjFile.path) === normalized);
+            if (project) {
+                await this.setActiveProject(project, false);
             }
         }
     }
 
-    async openProject(path: string): Promise<KeilProject | undefined> {
+    private getClosedProjectPaths(): string[] {
+        return this.extensionContext.workspaceState.get<string[]>(this.closedProjectPathsKey) || [];
+    }
+
+    private async addClosedProjectPath(path: string): Promise<void> {
+        const normalized = node_path.normalize(path);
+        const list = this.getClosedProjectPaths();
+        if (!list.some(p => node_path.normalize(p) === normalized)) {
+            list.push(path);
+            await this.extensionContext.workspaceState.update(this.closedProjectPathsKey, list);
+        }
+    }
+
+    private async removeClosedProjectPath(path: string): Promise<void> {
+        const normalized = node_path.normalize(path);
+        const list = this.getClosedProjectPaths().filter(p => node_path.normalize(p) !== normalized);
+        await this.extensionContext.workspaceState.update(this.closedProjectPathsKey, list);
+    }
+
+    private persistActiveProject(project: KeilProject): void {
+        this.extensionContext.workspaceState.update(this.lastActiveProjectKey, project.uvprjFile.path);
+    }
+
+    public async clearClosedProjectPath(path: string): Promise<void> {
+        await this.removeClosedProjectPath(path);
+    }
+
+    private async setActiveProject(project: KeilProject, persist: boolean): Promise<void> {
+        this.currentActiveProject?.deactive();
+        this.currentActiveProject = project;
+        this.currentActiveProject.active();
+        await this.currentActiveProject.applyActiveCppConfiguration();
+        this.updateView();
+        this.updateStatusBarVisibility();
+        if (persist) {
+            this.persistActiveProject(project);
+        }
+    }
+
+    async openProject(path: string, persistActive = true, removeClosed = true): Promise<KeilProject | undefined> {
         // Pass extensionContext to KeilProject constructor
         const nPrj = new KeilProject(new File(path), this.extensionContext); 
         if (!this.prjList.has(nPrj.prjID)) {
@@ -2052,12 +2101,10 @@ class ProjectExplorer implements vscode.TreeDataProvider<IView>, vscode.Disposab
             nPrj.on('dataChanged', () => this.updateView());
             this.prjList.set(nPrj.prjID, nPrj);
             // Always activate the newly opened project to match user intent
-            this.currentActiveProject?.deactive();
-            this.currentActiveProject = nPrj;
-            this.currentActiveProject.active();
-            await this.currentActiveProject.applyActiveCppConfiguration();
-            this.updateView();
-            this.updateStatusBarVisibility();
+            await this.setActiveProject(nPrj, persistActive);
+            if (removeClosed) {
+                await this.removeClosedProjectPath(nPrj.uvprjFile.path);
+            }
             return nPrj;
         }
         return undefined;
@@ -2069,8 +2116,14 @@ class ProjectExplorer implements vscode.TreeDataProvider<IView>, vscode.Disposab
             prj.deactive();
             prj.close();
             this.prjList.delete(pID);
+            await this.addClosedProjectPath(prj.uvprjFile.path);
             if (this.currentActiveProject?.prjID === pID) {
-                this.currentActiveProject = undefined;
+                const nextProject = this.prjList.values().next().value as KeilProject | undefined;
+                if (nextProject) {
+                    await this.setActiveProject(nextProject, true);
+                } else {
+                    this.currentActiveProject = undefined;
+                }
             }
             this.updateView();
             this.updateStatusBarVisibility();
@@ -2080,12 +2133,7 @@ class ProjectExplorer implements vscode.TreeDataProvider<IView>, vscode.Disposab
     async activeProject(view: IView) {
         const project = this.prjList.get(view.prjID);
         if (project) {
-            this.currentActiveProject?.deactive();
-            this.currentActiveProject = project;
-            this.currentActiveProject.active();
-            await this.currentActiveProject.applyActiveCppConfiguration();
-            this.updateView();
-            this.updateStatusBarVisibility();
+            await this.setActiveProject(project, true);
         }
     }
 
@@ -2099,10 +2147,7 @@ class ProjectExplorer implements vscode.TreeDataProvider<IView>, vscode.Disposab
             });
             if (targetName) {
                 if (this.currentActiveProject?.prjID !== prj.prjID) {
-                    this.currentActiveProject?.deactive();
-                    this.currentActiveProject = prj;
-                    this.currentActiveProject.active();
-                    this.updateStatusBarVisibility();
+                    await this.setActiveProject(prj, true);
                 }
                 await prj.setActiveTarget(targetName);
                 this.updateView();
@@ -2178,6 +2223,10 @@ class ProjectExplorer implements vscode.TreeDataProvider<IView>, vscode.Disposab
         res.tooltip = element.tooltip;
         res.collapsibleState = element.getChildViews() === undefined ?
             vscode.TreeItemCollapsibleState.None : vscode.TreeItemCollapsibleState.Collapsed;
+
+        if (element instanceof KeilProject && this.currentActiveProject?.prjID === element.prjID) {
+            res.description = '*';
+        }
 
         if (element instanceof Source) {
             res.command = {
