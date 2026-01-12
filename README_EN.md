@@ -110,9 +110,15 @@ Total Score: 25/25 Perfect!
 ## Feedback 💬
 
 For issues or suggestions, please reach out through:
-- GitHub Issues
-- Email Support
-- Community Discussion
+
+[![GitHub Issues](https://img.shields.io/badge/GitHub-Issues-181717?style=flat&logo=github&logoColor=white)](https://github.com/ruiwarn/keil-assistant/issues)
+
+[![X](https://img.shields.io/badge/X-@ruiapp-000000?style=flat&logo=x&logoColor=white)](https://x.com/ruiapp)
+
+[![Telegram](https://img.shields.io/badge/Telegram-@appcium-26A5E4?style=flat&logo=telegram&logoColor=white)](https://t.me/appcium)
+
+[![Email](https://img.shields.io/badge/Email-rui@ruiapp.com-EA4335?style=flat&logo=gmail&logoColor=white)](mailto:rui@ruiapp.com)
+
 
 **Note: This is a community-maintained version starting from v2.0.0. The original project is no longer updated.**
 
@@ -147,7 +153,3 @@ Provides syntax highlighting, code snippets for Keil projects, and supports comp
 2. Enter Keil Assistant New plugin settings and set the absolute path of Keil executable `UV4.exe`
 
    ![setting](./res/preview/setting.png)
-
-## Issue Reporting
-
-For any issues or suggestions, please report via GitHub Issues.

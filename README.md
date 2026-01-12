@@ -79,10 +79,15 @@
 
 如有问题或建议，请通过以下方式联系：
 
-[![GitHub Issues](https://img.shields.io/badge/GitHub-Issues-181717?style=flat&logo=github&logoColor=white)](https://github.com/aspect-apps/keil-assistant/issues)
+[![GitHub Issues](https://img.shields.io/badge/GitHub-Issues-181717?style=flat&logo=github&logoColor=white)](https://github.com/ruiwarn/keil-assistant/issues)
+
 [![X](https://img.shields.io/badge/X-@ruiapp-000000?style=flat&logo=x&logoColor=white)](https://x.com/ruiapp)
+
 [![Telegram](https://img.shields.io/badge/Telegram-@appcium-26A5E4?style=flat&logo=telegram&logoColor=white)](https://t.me/appcium)
+
 [![Email](https://img.shields.io/badge/Email-rui@ruiapp.com-EA4335?style=flat&logo=gmail&logoColor=white)](mailto:rui@ruiapp.com)
+
+
 
 **注意：这是一个由社区接手维护的版本，从 v2.0.0 开始。原始项目已不再更新。**
 
