@@ -16,6 +16,9 @@ import { FileWatcher } from '../lib/node_utility/FileWatcher';
 import { Time } from '../lib/node_utility/Time';
 import { isArray } from 'util';
 import { CmdLineHandler } from './CmdLineHandler';
+import { mergeCppProperties } from './project/cppProperties';
+import { formatPathValidationErrors, validateExecutionPaths } from './project/pathValidation';
+import { buildTreeItemId, findRevealPath, ProjectSortOrder, sortProjects } from './projectExplorer/treeState';
 
 // 添加一个消息防重复显示机制
 const messageDebouncer = new Map<string, number>();
@@ -182,30 +185,14 @@ export function activate(context: vscode.ExtensionContext) {
             // 根据工程类型检查对应的路径
             if (hasC51Project) {
                 const c51Path = vscode.workspace.getConfiguration('KeilAssistant.C51').get<string>('Uv4Path');
-                if (!c51Path) {
-                    showMessage(
-                        '请先设置 C51 UV4 路径！\n' +
-                        '1. 打开设置 (Ctrl+,)\n' +
-                        '2. 搜索 "KeilAssistant.C51.Uv4Path"\n' +
-                        '3. 设置 C51 UV4.exe 的绝对路径\n' +
-                        '示例路径：C:\\Keil_v5\\UV4\\UV4.exe',
-                        'error'
-                    );
+                if (!ensureUv4PathExists(c51Path || '', 'KeilAssistant.C51.Uv4Path', 'C51')) {
                     return;
                 }
             }
 
             if (hasArmProject) {
                 const mdkPath = vscode.workspace.getConfiguration('KeilAssistant.MDK').get<string>('Uv4Path');
-                if (!mdkPath) {
-                    showMessage(
-                        '请先设置 MDK UV4 路径！\n' +
-                        '1. 打开设置 (Ctrl+,)\n' +
-                        '2. 搜索 "KeilAssistant.MDK.Uv4Path"\n' +
-                        '3. 设置 MDK UV4.exe 的绝对路径\n' +
-                        '示例路径：C:\\Keil_v5\\UV4\\UV4.exe',
-                        'error'
-                    );
+                if (!ensureUv4PathExists(mdkPath || '', 'KeilAssistant.MDK.Uv4Path', 'MDK')) {
                     return;
                 }
             }
@@ -257,6 +244,12 @@ export function activate(context: vscode.ExtensionContext) {
     
     subscriber.push(vscode.commands.registerCommand('project.active', (item: IView) => prjExplorer.activeProject(item)));
 
+    subscriber.push(vscode.commands.registerCommand('project.refresh', () => prjExplorer.refreshActiveProject(false)));
+
+    subscriber.push(vscode.commands.registerCommand('project.clearCacheAndRefresh', () => prjExplorer.refreshActiveProject(true)));
+
+    subscriber.push(vscode.commands.registerCommand('project.revealCurrentFile', () => prjExplorer.revealCurrentEditor()));
+
     // 注册Chat Tools
     registerChatTools(context, prjExplorer);
 
@@ -277,6 +270,32 @@ function getMD5(data: string): string {
 
 function openWorkspace(wsFile: File) {
     vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.parse(wsFile.ToUri()));
+}
+
+function ensureUv4PathExists(path: string, settingKey: string, label: string): boolean {
+    if (!path) {
+        showMessage(
+            `请先设置 ${label} UV4 路径！\n` +
+            '1. 打开设置 (Ctrl+,)\n' +
+            `2. 搜索 "${settingKey}"\n` +
+            `3. 设置 ${label} UV4.exe 的绝对路径\n` +
+            '示例路径：C:\\Keil_v5\\UV4\\UV4.exe',
+            'error'
+        );
+        return false;
+    }
+
+    if (!fs.existsSync(path)) {
+        showMessage(
+            `${label} UV4.exe 路径不存在：${path}\n` +
+            `请检查设置项 "${settingKey}" 是否指向真实存在的 UV4.exe。`,
+            'error',
+            4000
+        );
+        return false;
+    }
+
+    return true;
 }
 
 //===============================
@@ -828,32 +847,15 @@ abstract class Target implements IView {
             obj = this.getDefCppProperties();
         }
 
-        let configList: any[] = Array.isArray(obj['configurations']) ? obj['configurations'] : [];
-        obj['configurations'] = configList;
+        const merged = mergeCppProperties(
+            obj,
+            this.cppConfigName,
+            Array.from(this.includes).concat(['${default}']),
+            Array.from(this.defines),
+            this.targetName
+        );
 
-        const legacyIndex = configList.findIndex((conf) => { return conf.name === this.targetName; });
-        let index = configList.findIndex((conf) => { return conf.name === this.cppConfigName; });
-
-        if (index === -1 && legacyIndex !== -1) {
-            index = legacyIndex;
-            configList[index]['name'] = this.cppConfigName; // migrate legacy name to avoid collisions
-        } else if (index !== -1 && legacyIndex !== -1 && legacyIndex !== index) {
-            configList.splice(legacyIndex, 1); // remove redundant legacy entry
-        }
-
-        if (index === -1) {
-            configList.push({
-                name: this.cppConfigName,
-                includePath: Array.from(this.includes).concat(['${default}']),
-                defines: Array.from(this.defines),
-                intelliSenseMode: '${default}'
-            });
-        } else {
-            configList[index]['includePath'] = Array.from(this.includes).concat(['${default}']);
-            configList[index]['defines'] = Array.from(this.defines);
-        }
-
-        proFile.Write(JSON.stringify(obj, undefined, 4));
+        proFile.Write(JSON.stringify(merged, undefined, 4));
     }
 
     public async applyCppConfigurationSelection(): Promise<void> {
@@ -988,6 +990,22 @@ abstract class Target implements IView {
 
         if (vscode.env.remoteName === 'wsl') {
             showMessage('Keil Assistant 检测到当前 VS Code 运行在 WSL 会话中，Keil/UV4 只能在 Windows 环境执行。请在 Windows 会话下打开工程或将终端切换到 PowerShell/CMD。', 'error', 4000);
+            return;
+        }
+
+        const uv4PathIndex = commands.findIndex(value => value === '--uv4Path');
+        const uv4Path = uv4PathIndex !== -1 ? commands[uv4PathIndex + 1] : '';
+        const validation = validateExecutionPaths({
+            builderExe: ResourceManager.getInstance().getBuilderExe(),
+            uv4Path,
+            projectFile: this.project.uvprjFile.path,
+            projectDir: this.project.uvprjFile.dir
+        }, candidate => fs.existsSync(candidate));
+
+        if (!validation.ok) {
+            const message = formatPathValidationErrors(validation.errors);
+            this.project.logger.log(`[ERROR] Task '${name}' path validation failed:\n${message}`);
+            showMessage(message, 'error', 4000);
             return;
         }
 
@@ -1899,6 +1917,7 @@ class ProjectExplorer implements vscode.TreeDataProvider<IView>, vscode.Disposab
     private ItemClickCommand = 'Item.Click';
     private readonly lastActiveProjectKey = 'keilAssistant.lastActiveProjectPath';
     private readonly closedProjectPathsKey = 'keilAssistant.closedProjectPaths';
+    private readonly expandedItemIdsKey = 'keilAssistant.projectExpandedItemIds';
 
     // Allow undefined/null for root refresh
     onDidChangeTreeData: vscode.Event<IView | undefined | null>;
@@ -1906,9 +1925,11 @@ class ProjectExplorer implements vscode.TreeDataProvider<IView>, vscode.Disposab
 
     private prjList: Map<string, KeilProject>;
     private currentActiveProject: KeilProject | undefined;
+    private treeView: vscode.TreeView<IView>;
     private buildStatusBarItem: vscode.StatusBarItem;
     private rebuildStatusBarItem: vscode.StatusBarItem;
     private downloadStatusBarItem: vscode.StatusBarItem;
+    private restoreExpandedStateTimer: NodeJS.Timeout | undefined;
 
     private extensionContext: vscode.ExtensionContext; // Store context
 
@@ -1917,8 +1938,20 @@ class ProjectExplorer implements vscode.TreeDataProvider<IView>, vscode.Disposab
         this.prjList = new Map();
         this.viewEvent = new vscode.EventEmitter<IView | undefined | null>();
         this.onDidChangeTreeData = this.viewEvent.event;
-        context.subscriptions.push(vscode.window.registerTreeDataProvider('project', this));
+        this.treeView = vscode.window.createTreeView('project', { treeDataProvider: this });
+        context.subscriptions.push(this.treeView);
         context.subscriptions.push(vscode.commands.registerCommand(this.ItemClickCommand, (item: IView) => this.onItemClick(item)));
+        context.subscriptions.push(this.treeView.onDidExpandElement(event => {
+            void this.onExpandedStateChanged(event.element, true);
+        }));
+        context.subscriptions.push(this.treeView.onDidCollapseElement(event => {
+            void this.onExpandedStateChanged(event.element, false);
+        }));
+        context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(() => {
+            if (this.shouldAutoRevealCurrentFile()) {
+                void this.revealCurrentEditor(false);
+            }
+        }));
 
         // 创建状态栏项
         this.buildStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, -8);
@@ -1950,6 +1983,145 @@ class ProjectExplorer implements vscode.TreeDataProvider<IView>, vscode.Disposab
             this.buildStatusBarItem.hide();
             this.rebuildStatusBarItem.hide();
             this.downloadStatusBarItem.hide();
+        }
+    }
+
+    private getProjectExplorerConfig(): vscode.WorkspaceConfiguration {
+        return vscode.workspace.getConfiguration('KeilAssistant.ProjectExplorer');
+    }
+
+    private shouldRememberExpandedState(): boolean {
+        return this.getProjectExplorerConfig().get<boolean>('RememberExpandedState', false);
+    }
+
+    private shouldAutoRevealCurrentFile(): boolean {
+        return this.getProjectExplorerConfig().get<boolean>('AutoRevealCurrentFile', false);
+    }
+
+    private getProjectSortOrder(): ProjectSortOrder {
+        return this.getProjectExplorerConfig().get<ProjectSortOrder>('SortOrder', 'legacy');
+    }
+
+    private getExpandedItemIds(): string[] {
+        return this.extensionContext.workspaceState.get<string[]>(this.expandedItemIdsKey) || [];
+    }
+
+    private async setExpandedItemIds(ids: string[]): Promise<void> {
+        await this.extensionContext.workspaceState.update(this.expandedItemIdsKey, ids);
+    }
+
+    private canRememberExpandedState(element: IView): boolean {
+        return element instanceof KeilProject || element instanceof Target || element instanceof FileGroup;
+    }
+
+    private getElementId(element: IView): string | undefined {
+        const project = this.prjList.get(element.prjID);
+        if (!project) {
+            return undefined;
+        }
+
+        if (element instanceof KeilProject) {
+            return buildTreeItemId('project', {
+                projectPath: element.uvprjFile.path
+            });
+        }
+
+        if (element instanceof Target) {
+            return buildTreeItemId('target', {
+                projectPath: project.uvprjFile.path,
+                targetName: element.targetName
+            });
+        }
+
+        if (element instanceof FileGroup) {
+            return buildTreeItemId('group', {
+                projectPath: project.uvprjFile.path,
+                targetName: project.getActiveTarget()?.targetName || '',
+                groupName: element.label
+            });
+        }
+
+        if (element instanceof Source) {
+            return buildTreeItemId('source', {
+                projectPath: project.uvprjFile.path,
+                targetName: project.getActiveTarget()?.targetName || '',
+                filePath: element.file.path
+            });
+        }
+
+        return undefined;
+    }
+
+    private async onExpandedStateChanged(element: IView, expanded: boolean): Promise<void> {
+        if (!this.shouldRememberExpandedState() || !this.canRememberExpandedState(element)) {
+            return;
+        }
+
+        const elementId = this.getElementId(element);
+        if (!elementId) {
+            return;
+        }
+
+        const ids = new Set(this.getExpandedItemIds());
+        if (expanded) {
+            ids.add(elementId);
+        } else {
+            ids.delete(elementId);
+        }
+
+        await this.setExpandedItemIds(Array.from(ids));
+    }
+
+    private scheduleRestoreExpandedState(): void {
+        if (!this.shouldRememberExpandedState()) {
+            return;
+        }
+
+        if (this.restoreExpandedStateTimer) {
+            clearTimeout(this.restoreExpandedStateTimer);
+        }
+
+        this.restoreExpandedStateTimer = setTimeout(() => {
+            void this.restoreExpandedState();
+        }, 0);
+    }
+
+    private async restoreExpandedState(): Promise<void> {
+        if (!this.shouldRememberExpandedState()) {
+            return;
+        }
+
+        const expandedIds = new Set(this.getExpandedItemIds());
+        if (expandedIds.size === 0) {
+            return;
+        }
+
+        for (const project of this.prjList.values()) {
+            const projectId = this.getElementId(project);
+            if (projectId && expandedIds.has(projectId)) {
+                await this.treeView.reveal(project, { expand: true, focus: false, select: false });
+            }
+
+            const target = project.getActiveTarget();
+            if (!target) {
+                continue;
+            }
+
+            const targetId = this.getElementId(target);
+            if (targetId && expandedIds.has(targetId)) {
+                await this.treeView.reveal(target, { expand: true, focus: false, select: false });
+            }
+
+            for (const group of target.getChildViews() || []) {
+                if (!(group instanceof FileGroup)) {
+                    continue;
+                }
+
+                const groupId = this.getElementId(group);
+                if (groupId && expandedIds.has(groupId)) {
+                    await this.treeView.reveal(group, { expand: true, focus: false, select: false });
+                }
+            }
         }
     }
 
@@ -2094,6 +2266,15 @@ class ProjectExplorer implements vscode.TreeDataProvider<IView>, vscode.Disposab
     }
 
     async openProject(path: string, persistActive = true, removeClosed = true): Promise<KeilProject | undefined> {
+        if (!fs.existsSync(path)) {
+            throw new Error(`Keil 工程文件不存在: ${path}`);
+        }
+
+        const projectDir = node_path.dirname(path);
+        if (!fs.existsSync(projectDir)) {
+            throw new Error(`Keil 工程目录不存在: ${projectDir}`);
+        }
+
         // Pass extensionContext to KeilProject constructor
         const nPrj = new KeilProject(new File(path), this.extensionContext); 
         if (!this.prjList.has(nPrj.prjID)) {
@@ -2108,6 +2289,128 @@ class ProjectExplorer implements vscode.TreeDataProvider<IView>, vscode.Disposab
             return nPrj;
         }
         return undefined;
+    }
+
+    async refreshActiveProject(clearCache: boolean): Promise<void> {
+        const activeProject = this.currentActiveProject;
+        if (!activeProject) {
+            showMessage('当前没有活动工程可刷新。', 'warning');
+            return;
+        }
+
+        const projectPath = activeProject.uvprjFile.path;
+        const activeTargetName = activeProject.getActiveTarget()?.targetName;
+        const projectStoragePath = activeProject.projectStorageDir.path;
+
+        activeProject.deactive();
+        activeProject.close();
+        this.prjList.delete(activeProject.prjID);
+        this.currentActiveProject = undefined;
+        this.updateView();
+        this.updateStatusBarVisibility();
+
+        if (clearCache) {
+            try {
+                fs.rmSync(projectStoragePath, { recursive: true, force: true });
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                showMessage(`清理项目缓存失败，将继续尝试重新加载工程：${message}`, 'warning', 4000);
+            }
+        }
+
+        try {
+            const reopened = await this.openProject(projectPath, true, false);
+            if (reopened && activeTargetName && reopened.getTargetByName(activeTargetName)) {
+                await reopened.setActiveTarget(activeTargetName);
+            }
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            showMessage(`刷新工程失败！错误信息: ${message}`, 'error', 4000);
+        }
+    }
+
+    async revealCurrentEditor(showMissingMessage = true): Promise<void> {
+        const editor = vscode.window.activeTextEditor;
+        if (!editor || editor.document.uri.scheme !== 'file') {
+            if (showMissingMessage) {
+                showMessage('当前没有可定位的文件。', 'warning');
+            }
+            return;
+        }
+
+        const match = findRevealPath(editor.document.uri.fsPath, this.getRevealEntries());
+        if (!match) {
+            if (showMissingMessage) {
+                showMessage('当前文件不在已加载的 Keil 工程树中。', 'warning');
+            }
+            return;
+        }
+
+        if (this.currentActiveProject?.prjID !== match.project.prjID) {
+            await this.setActiveProject(match.project, true);
+        }
+
+        if (match.project.getActiveTarget()?.targetName !== match.target.targetName) {
+            await match.project.setActiveTarget(match.target.targetName);
+            this.updateView();
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 0));
+
+        const activeProject = this.prjList.get(match.project.prjID);
+        const target = activeProject?.getTargetByName(match.target.targetName);
+        const group = target?.getChildViews()?.find(view => view instanceof FileGroup && view.label === match.group.label) as FileGroup | undefined;
+        const source = group?.sources.find(item => node_path.normalize(item.file.path) === node_path.normalize(match.source.file.path));
+
+        if (!activeProject || !target || !group || !source) {
+            if (showMissingMessage) {
+                showMessage('当前文件定位失败，工程树节点未找到。', 'warning');
+            }
+            return;
+        }
+
+        await this.treeView.reveal(activeProject, { expand: true, focus: false, select: false });
+        await this.treeView.reveal(target, { expand: true, focus: false, select: false });
+        await this.treeView.reveal(group, { expand: true, focus: false, select: false });
+        await this.treeView.reveal(source, { expand: false, focus: false, select: true });
+    }
+
+    private getRevealEntries() {
+        const entries: Array<{
+            projectPath: string;
+            targetName: string;
+            groupName: string;
+            filePath: string;
+            project: KeilProject;
+            target: Target;
+            group: FileGroup;
+            source: Source;
+        }> = [];
+
+        for (const project of this.prjList.values()) {
+            for (const target of project.getTargets()) {
+                for (const groupView of target.getChildViews() || []) {
+                    if (!(groupView instanceof FileGroup)) {
+                        continue;
+                    }
+
+                    for (const source of groupView.sources) {
+                        entries.push({
+                            projectPath: project.uvprjFile.path,
+                            targetName: target.targetName,
+                            groupName: groupView.label,
+                            filePath: source.file.path,
+                            project,
+                            target,
+                            group: groupView,
+                            source
+                        });
+                    }
+                }
+            }
+        }
+
+        return entries;
     }
 
     async closeProject(pID: string) {
@@ -2176,6 +2479,7 @@ class ProjectExplorer implements vscode.TreeDataProvider<IView>, vscode.Disposab
 
     updateView() {
         this.viewEvent.fire(undefined); // Pass undefined as argument
+        this.scheduleRestoreExpandedState();
     }
 
     //----------------------------------
@@ -2218,11 +2522,13 @@ class ProjectExplorer implements vscode.TreeDataProvider<IView>, vscode.Disposab
     getTreeItem(element: IView): vscode.TreeItem | Thenable<vscode.TreeItem> {
 
         const res = new vscode.TreeItem(element.label);
+        const elementId = this.getElementId(element);
 
         res.contextValue = element.contextVal;
         res.tooltip = element.tooltip;
         res.collapsibleState = element.getChildViews() === undefined ?
             vscode.TreeItemCollapsibleState.None : vscode.TreeItemCollapsibleState.Collapsed;
+        res.id = elementId;
 
         if (element instanceof KeilProject && this.currentActiveProject?.prjID === element.prjID) {
             res.description = '*';
@@ -2258,7 +2564,14 @@ class ProjectExplorer implements vscode.TreeDataProvider<IView>, vscode.Disposab
 
     getChildren(element?: IView | undefined): vscode.ProviderResult<IView[]> {
         if (element === undefined) {
-            return Array.from(this.prjList.values());
+            return sortProjects(
+                Array.from(this.prjList.values()).map(project => ({
+                    label: project.label,
+                    path: project.uvprjFile.path,
+                    project
+                })),
+                this.getProjectSortOrder()
+            ).map(item => item.project);
         } else {
             return element.getChildViews();
         }
@@ -2275,6 +2588,10 @@ class ProjectExplorer implements vscode.TreeDataProvider<IView>, vscode.Disposab
     dispose() {
         // Dispose of any resources managed by ProjectExplorer itself, if any.
         // TreeDataProvider and Commands pushed to context.subscriptions are disposed by VSCode.
+        if (this.restoreExpandedStateTimer) {
+            clearTimeout(this.restoreExpandedStateTimer);
+        }
+        this.treeView.dispose();
         this.buildStatusBarItem.dispose();
         this.rebuildStatusBarItem.dispose();
         this.downloadStatusBarItem.dispose();

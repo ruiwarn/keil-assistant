@@ -75,6 +75,18 @@
 - **项目切换**：点击项目名快速切换
 - **编译配置**：支持自定义编译参数
 
+### 4. 兼容性优先的工程树选项
+
+- `KeilAssistant.ProjectExplorer.RememberExpandedState`：记住工程树展开状态，默认 `false`
+- `KeilAssistant.ProjectExplorer.SortOrder`：根工程排序方式，可选 `legacy`、`name`、`path`，默认 `legacy`
+- `KeilAssistant.ProjectExplorer.AutoRevealCurrentFile`：自动在工程树中定位当前文件，默认 `false`
+
+### 5. 新增命令
+
+- `Refresh Keil Project`
+- `Clear Project Cache And Refresh`
+- `Reveal Current File In Keil Project`
+
 ## 问题反馈 💬
 
 如有问题或建议，请通过以下方式联系：
