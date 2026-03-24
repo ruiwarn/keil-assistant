@@ -162,7 +162,11 @@
             },
             {
                 "command": "project.refresh",
-                "title": "Refresh Keil Project"
+                "title": "Refresh Keil Project",
+                "icon": {
+                    "light": "./res/icons/refresh-light.svg",
+                    "dark": "./res/icons/refresh-dark.svg"
+                }
             },
             {
                 "command": "project.clearCacheAndRefresh",
@@ -170,7 +174,11 @@
             },
             {
                 "command": "project.revealCurrentFile",
-                "title": "Reveal Current File In Keil Project"
+                "title": "Reveal Current File In Keil Project",
+                "icon": {
+                    "light": "./res/icons/ActiveApplication_16x.svg",
+                    "dark": "./res/icons/ActiveApplication_16x.svg"
+                }
             }
         ],
         "menus": {
@@ -178,6 +186,16 @@
                 {
                     "command": "explorer.open",
                     "group": "navigation",
+                    "when": "view == project"
+                },
+                {
+                    "command": "project.refresh",
+                    "group": "navigation@1",
+                    "when": "view == project"
+                },
+                {
+                    "command": "project.revealCurrentFile",
+                    "group": "navigation@2",
                     "when": "view == project"
                 }
             ],
@@ -188,6 +206,21 @@
                 },
                 {
                     "command": "project.active",
+                    "when": "viewItem == Project"
+                },
+                {
+                    "command": "project.refresh",
+                    "group": "navigation",
+                    "when": "viewItem == Project"
+                },
+                {
+                    "command": "project.clearCacheAndRefresh",
+                    "group": "navigation",
+                    "when": "viewItem == Project"
+                },
+                {
+                    "command": "project.revealCurrentFile",
+                    "group": "navigation",
                     "when": "viewItem == Project"
                 },
                 {
