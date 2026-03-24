@@ -2,6 +2,34 @@
 
 All notable changes to the "keil-assistant-new" extension will be documented in this file.
 
+## [2.5.0] - 2026-03-24
+
+### 新增功能 🚀
+
+- 新增兼容性优先的工程树选项：
+  - `KeilAssistant.ProjectExplorer.RememberExpandedState`
+  - `KeilAssistant.ProjectExplorer.SortOrder`
+  - `KeilAssistant.ProjectExplorer.AutoRevealCurrentFile`
+- 新增命令：
+  - `Refresh Keil Project`
+  - `Clear Project Cache And Refresh`
+  - `Reveal Current File In Keil Project`
+
+### 修复问题 🔧
+
+- `c_cpp_properties.json` 改为合并更新插件管理的配置项，尽量保留用户自定义字段，减少误覆盖
+- 在打开工程和执行 build/rebuild/download 前增加更明确的路径校验，遇到无效 `UV4.exe`、工程文件或工程目录时更早报错
+- 增强工程刷新与缓存清理后的恢复流程，降低缓存失效导致的工程加载失败问题
+
+### 兼容性说明 🔗
+
+- 默认行为保持兼容老用户：
+  - `RememberExpandedState = false`
+  - `SortOrder = legacy`
+  - `AutoRevealCurrentFile = false`
+- 新增命令本轮仅通过命令面板提供，不增加常驻侧栏按钮
+- 新增测试入口和单元测试覆盖配置合并、路径校验与工程树状态逻辑
+
 ## [2.4.1] - 2025-12-29
 
 ### 优化改进 ✨
