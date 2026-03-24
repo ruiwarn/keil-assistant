@@ -91,6 +91,21 @@ Seamless collaboration with Copilot through Chat Tools:
 }
 ```
 
+3. Compatibility-first project explorer options:
+```json
+{
+    "KeilAssistant.ProjectExplorer.RememberExpandedState": false,
+    "KeilAssistant.ProjectExplorer.SortOrder": "legacy",
+    "KeilAssistant.ProjectExplorer.AutoRevealCurrentFile": false
+}
+```
+
+### Commands
+
+- `Refresh Keil Project`
+- `Clear Project Cache And Refresh`
+- `Reveal Current File In Keil Project`
+
 ## System Requirements 💻
 
 - Windows 7/8/10/11

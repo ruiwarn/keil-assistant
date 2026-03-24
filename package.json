@@ -72,6 +72,29 @@
                         "scope": "resource",
                         "markdownDescription": "uVision project file locations",
                         "default": []
+                    },
+                    "KeilAssistant.ProjectExplorer.RememberExpandedState": {
+                        "type": "boolean",
+                        "scope": "window",
+                        "markdownDescription": "Remember expanded Keil project tree nodes between refreshes and reloads.",
+                        "default": false
+                    },
+                    "KeilAssistant.ProjectExplorer.SortOrder": {
+                        "type": "string",
+                        "scope": "window",
+                        "markdownDescription": "Sort order for root Keil projects in the explorer.",
+                        "enum": [
+                            "legacy",
+                            "name",
+                            "path"
+                        ],
+                        "default": "legacy"
+                    },
+                    "KeilAssistant.ProjectExplorer.AutoRevealCurrentFile": {
+                        "type": "boolean",
+                        "scope": "window",
+                        "markdownDescription": "Automatically reveal the current file in the Keil project tree when possible.",
+                        "default": false
                     }
                 }
             }
@@ -136,6 +159,18 @@
                     "light": "./res/icons/CopyToClipboard_16x.svg",
                     "dark": "./res/icons/CopyToClipboard_16x.svg"
                 }
+            },
+            {
+                "command": "project.refresh",
+                "title": "Refresh Keil Project"
+            },
+            {
+                "command": "project.clearCacheAndRefresh",
+                "title": "Clear Project Cache And Refresh"
+            },
+            {
+                "command": "project.revealCurrentFile",
+                "title": "Reveal Current File In Keil Project"
             }
         ],
         "menus": {
@@ -334,7 +369,7 @@
         "webpack:watch": "npx webpack --mode development --watch",
         "lint": "npx eslint src --ext .ts",
         "pretest": "npm run lint && npm run compile",
-        "test": "node ./out/test/runTest.js"
+        "test": "node ./scripts/run-mocha.js"
     },
     "devDependencies": {
         "@types/glob": "^7.1.1",

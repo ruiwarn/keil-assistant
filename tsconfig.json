@@ -10,7 +10,8 @@
 		"strict": true,   /* enable all strict type-checking options */
 		"types": [
 			"node",
-			"vscode"
+			"vscode",
+			"mocha"
 		],
 		"typeRoots": [
 			"./node_modules/@types"
