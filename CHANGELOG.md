@@ -14,6 +14,7 @@ All notable changes to the "keil-assistant-new" extension will be documented in 
   - `Refresh Keil Project`
   - `Clear Project Cache And Refresh`
   - `Reveal Current File In Keil Project`
+- 将常用工程树动作补充到工程树标题栏和项目右键菜单，减少只依赖命令面板的使用成本
 
 ### 修复问题 🔧
 

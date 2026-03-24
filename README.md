@@ -77,6 +77,7 @@
 
 ### 4. 兼容性优先的工程树选项
 
+- 配置入口：`Ctrl+,` 打开 VS Code Settings，搜索 `KeilAssistant.ProjectExplorer`
 - `KeilAssistant.ProjectExplorer.RememberExpandedState`：记住工程树展开状态，默认 `false`
 - `KeilAssistant.ProjectExplorer.SortOrder`：根工程排序方式，可选 `legacy`、`name`、`path`，默认 `legacy`
 - `KeilAssistant.ProjectExplorer.AutoRevealCurrentFile`：自动在工程树中定位当前文件，默认 `false`
@@ -86,6 +87,10 @@
 - `Refresh Keil Project`
 - `Clear Project Cache And Refresh`
 - `Reveal Current File In Keil Project`
+- 使用入口：
+  - 工程树标题栏：`Refresh Keil Project`、`Reveal Current File In Keil Project`
+  - 工程树项目右键菜单：`Refresh Keil Project`、`Clear Project Cache And Refresh`、`Reveal Current File In Keil Project`
+  - 命令面板仍然保留以上 3 个命令，兼容老用户习惯
 
 ## 问题反馈 💬
 
