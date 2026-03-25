@@ -1,15 +1,22 @@
 # Keil Assistant Community Fork
 
-> A community-maintained fork of the original Keil Assistant for VS Code.
+> A community-maintained continuation of the original Keil Assistant for VS Code.
 >
-> This repository keeps the existing Marketplace item `candycium.keil-assistant-new` so current users can stay on the same settings and update path while the fork continues maintenance work.
+> This repository keeps the existing Marketplace item `candycium.keil-assistant-new` so current users can stay on the same settings and update path while independent maintenance continues here.
 
-## What Is Different In This Fork?
+## What Is Different In This Edition?
 
 - Community-maintained fixes and releases after the original extension stopped active updates
 - GitHub Copilot Chat Tools integration for build and project queries
 - Compatibility-first project explorer improvements that preserve old defaults
 - Safer `c_cpp_properties.json` merging and clearer recovery commands
+
+## Project Origin
+
+- This repository started from the original **Keil Assistant** codebase and now follows its own maintenance and release cycle.
+- Existing installs keep the same extension ID and `KeilAssistant.*` settings keys.
+- Repository: <https://github.com/ruiwarn/keil-assistant>
+- Issues: <https://github.com/ruiwarn/keil-assistant/issues>
 
 ## Highlights
 
@@ -22,8 +29,6 @@
 
 > Requires GitHub Copilot extension
 
-![CopilotTools](./images/copilot-tools.png)
-
 Use Chat Tools with Copilot to:
 - build the active project or a specific target
 - inspect project structure and target information
@@ -34,8 +39,6 @@ Use Chat Tools with Copilot to:
 - `keil-assistant_getProjectInfo` - Get detailed project information
 
 ## Explorer And Build Experience
-
-![build](./images/help.jpg)
 
 - status bar actions for build, rebuild, and download
 - project explorer actions for refresh, cache reset, and current-file reveal
@@ -137,8 +140,6 @@ Provides syntax highlighting, code snippets for Keil projects, and supports comp
 
 **Windows platform only**
 
-![preview](./res/preview/preview.png)
-
 ---
 
 ## Features 🎉
@@ -156,5 +157,6 @@ Provides syntax highlighting, code snippets for Keil projects, and supports comp
 
 1. Install [C/C++ Extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode.cpptools)
 2. Enter Keil Assistant Community Fork plugin settings and set the absolute path of Keil executable `UV4.exe`
-
-   ![setting](./res/preview/setting.png)
+3. Configuration entry:
+   - Press `Ctrl+,` and search for `Keil Assistant Community Fork`
+   - Or search directly for `KeilAssistant.C51.Uv4Path` / `KeilAssistant.MDK.Uv4Path`
