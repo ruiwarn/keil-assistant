@@ -2,6 +2,14 @@
 
 All notable changes to the "keil-assistant-new" extension will be documented in this file.
 
+## [2.5.1] - 2026-03-25
+
+### 优化改进 ✨
+
+- 调整扩展市场可见标识，明确声明这是原版 Keil Assistant 的社区维护分支
+- 更新扩展显示名、简介、设置分组标题与中英文 README 首页，降低与原扩展的混淆度
+- 替换为新的社区分支图标，同时保持扩展 ID 与 `KeilAssistant.*` 配置键不变，避免影响老用户升级路径
+
 ## [2.5.0] - 2026-03-24
 
 ### 新增功能 🚀

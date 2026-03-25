@@ -2,7 +2,7 @@
     "name": "keil-assistant-new",
     "displayName": "Keil Assistant Community Fork",
     "description": "A community-maintained fork of the original Keil Assistant for VS Code",
-    "version": "2.5.0",
+    "version": "2.5.1",
     "publisher": "candycium",
     "author": {
         "name": "Rui Wang"
