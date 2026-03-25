@@ -1,7 +1,7 @@
 {
     "name": "keil-assistant-new",
-    "displayName": "Keil Assistant New",
-    "description": "An assistant for Keil uVision (Forked and maintained)",
+    "displayName": "Keil Assistant Community Fork",
+    "description": "A community-maintained fork of the original Keil Assistant for VS Code",
     "version": "2.5.0",
     "publisher": "candycium",
     "author": {
@@ -44,7 +44,7 @@
     "contributes": {
         "configuration": [
             {
-                "title": "Keil Assistant",
+                "title": "Keil Assistant Community Fork",
                 "properties": {
                     "KeilAssistant.C51.Uv4Path": {
                         "type": "string",

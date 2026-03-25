@@ -1,60 +1,56 @@
-# Keil Assistant New
+# Keil Assistant Community Fork
 
-**重大更新：全新的智能编译体验！🚀**
+> A community-maintained fork of the original Keil Assistant for VS Code.
+>
+> This extension keeps the existing Marketplace item `candycium.keil-assistant-new` so current users can stay on the same settings and update path while receiving ongoing maintenance from this fork.
+>
+> 中文说明：这是原版 Keil Assistant 的社区维护分支，保留现有扩展 ID 与配置键，尽量不打断老用户升级和使用路径。
 
-## 亮点功能 ✨
+## What Is Different In This Fork?
 
-- **🤖 AI 辅助开发**：集成 GitHub Copilot Chat Tools，通过自然语言控制编译和查询项目信息
-- **智能项目搜索**：打开工作区后自动检测并加载 Keil 项目，无需手动查找
-- **一键式编译体验**：全新的状态栏按钮设计，编译、重编译、下载一键完成
-- **多核心并行编译**：自动检测 CPU 核心数，充分利用系统性能，显著提升编译速度
-- **智能项目类型识别**：自动识别 C51/ARM 项目类型，优化编译配置
-- **跨模块优化支持**：支持 Cross-Module-Optimization，提供更好的代码优化效果
+- Community-maintained releases after the original extension stopped active updates
+- GitHub Copilot Chat Tools integration for build and project queries
+- Compatibility-first project explorer improvements that keep old defaults unchanged
+- Safer `c_cpp_properties.json` merging to reduce accidental overwrite of user-owned fields
+- Clearer path validation and cache recovery commands for broken project states
 
-## 性能提升 🚀
+## Fork Notice
 
-- 编译速度提升高达 300%（在 8 核心 CPU 上测试）
-- 项目加载时间减少 50%
-- 内存占用优化，降低 30%
+- This repository is a community-maintained fork of the original **Keil Assistant** extension.
+- The goal of this fork is to preserve the existing user path while continuing to fix bugs and add carefully scoped improvements.
+- Existing configuration keys such as `KeilAssistant.*` remain unchanged so old users do not need to reconfigure the extension.
 
-## 智能化功能 🤖
+## Highlights
 
-### 1. GitHub Copilot 集成（v2.3.0 新增）
+- **AI-assisted build workflow**: integrates GitHub Copilot Chat Tools for build and project-info queries
+- **Automatic project discovery**: scans the workspace for Keil projects and loads them with minimal setup
+- **Project explorer quality-of-life**: adds refresh, reveal, sorting, and optional state restore without changing old defaults
+- **Build workflow integration**: supports build, rebuild, download, and target switching directly from VS Code
+- **Embedded-focused compatibility**: keeps support for Keil C51 and ARM project flows on Windows
 
-> 需要安装 GitHub Copilot 扩展
+## GitHub Copilot Integration
+
+> Requires the GitHub Copilot extension
 
 ![CopilotTools](./images/copilot-tools.png)
 
-通过 Chat Tools 与 Copilot 无缝协作：
-- **自然语言编译**：在 Copilot Chat 中输入 "帮我构建项目" 或 "编译 Debug 目标"
-- **项目信息查询**：询问 "这是什么类型的项目？" 或 "列出所有编译目标"
-- **智能错误诊断**：编译失败时，Copilot 可自动获取详细错误信息并提供修复建议
-- **自动化迭代**：实现 "编写-编译-修复" 的完整 AI 辅助开发流程
+Use Chat Tools with Copilot to:
+- build the active project or a specific target
+- query project structure and active target information
+- inspect build failures with file paths, line numbers, and codes
 
-**可用工具**：
-- `keil-assistant_buildProject` - 编译或重新编译项目
-- `keil-assistant_getProjectInfo` - 获取项目详细信息
+**Available tools**:
+- `keil-assistant_buildProject` - build or rebuild a Keil project target
+- `keil-assistant_getProjectInfo` - read the current Keil project structure
 
-### 2. 自动项目检测
-
-- 自动扫描工作区内的所有 Keil 项目
-- 智能过滤模板文件和测试项目
-- 支持自定义项目位置列表
-
-### 3. 便捷操作栏
+## Explorer And Build Experience
 
 ![build](./images/help.jpg)
 
-- 全新设计的状态栏按钮布局
-- 编译进度实时显示
-- 一键切换编译目标
-
-### 4. 智能编译优化
-
-- 自动检测 CPU 核心数
-- 智能分配编译线程
-- 支持跨模块优化（CMO）
-- 实时显示编译状态和进度
+- status bar actions for build, rebuild, and download
+- project explorer actions for refresh, cache reset, and current-file reveal
+- automatic project detection with configurable include and exclude lists
+- multi-core build execution when the toolchain supports it
 
 ## 使用指南 📖
 
@@ -136,6 +132,6 @@ VSCode 上的 Keil 辅助工具，与 C/C++ 插件配合使用。
 ### 准备工作
 
 1. 安装 [C/C++ 插件](https://marketplace.visualstudio.com/items?itemName=ms-vscode.cpptools)
-2. 进入 Keil Assistant New 插件设置，设置好 Keil 可执行文件 `UV4.exe` 的绝对路径
+2. 进入 Keil Assistant Community Fork 插件设置，设置好 Keil 可执行文件 `UV4.exe` 的绝对路径
 
    ![setting](./res/preview/setting.png)
