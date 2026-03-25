@@ -1,12 +1,12 @@
 # Keil Assistant Community Fork
 
-> A community-maintained fork of the original Keil Assistant for VS Code.
+> A community-maintained continuation of the original Keil Assistant for VS Code.
 >
-> This extension keeps the existing Marketplace item `candycium.keil-assistant-new` so current users can stay on the same settings and update path while receiving ongoing maintenance from this fork.
+> This extension keeps the existing Marketplace item `candycium.keil-assistant-new` so current users can stay on the same settings and update path while receiving ongoing independent maintenance and feature development in this repository.
 >
-> 中文说明：这是原版 Keil Assistant 的社区维护分支，保留现有扩展 ID 与配置键，尽量不打断老用户升级和使用路径。
+> 中文说明：这是基于原版 Keil Assistant 延续演进的社区维护版本，保留现有扩展 ID 与配置键，尽量不打断老用户升级和使用路径。
 
-## What Is Different In This Fork?
+## What Is Different In This Edition?
 
 - Community-maintained releases after the original extension stopped active updates
 - GitHub Copilot Chat Tools integration for build and project queries
@@ -14,11 +14,13 @@
 - Safer `c_cpp_properties.json` merging to reduce accidental overwrite of user-owned fields
 - Clearer path validation and cache recovery commands for broken project states
 
-## Fork Notice
+## Project Origin
 
-- This repository is a community-maintained fork of the original **Keil Assistant** extension.
-- The goal of this fork is to preserve the existing user path while continuing to fix bugs and add carefully scoped improvements.
+- This repository started from the original **Keil Assistant** codebase and now follows its own maintenance and release cycle.
+- The current goal is to preserve the existing user path while continuing to fix bugs and add carefully scoped improvements.
 - Existing configuration keys such as `KeilAssistant.*` remain unchanged so old users do not need to reconfigure the extension.
+- Repository: <https://github.com/ruiwarn/keil-assistant>
+- Issues: <https://github.com/ruiwarn/keil-assistant/issues>
 
 ## Highlights
 
@@ -32,8 +34,6 @@
 
 > Requires the GitHub Copilot extension
 
-![CopilotTools](./images/copilot-tools.png)
-
 Use Chat Tools with Copilot to:
 - build the active project or a specific target
 - query project structure and active target information
@@ -44,8 +44,6 @@ Use Chat Tools with Copilot to:
 - `keil-assistant_getProjectInfo` - read the current Keil project structure
 
 ## Explorer And Build Experience
-
-![build](./images/help.jpg)
 
 - status bar actions for build, rebuild, and download
 - project explorer actions for refresh, cache reset, and current-file reveal
@@ -114,8 +112,6 @@ VSCode 上的 Keil 辅助工具，与 C/C++ 插件配合使用。
 
 **仅支持 Windows 平台**
 
-![preview](./res/preview/preview.png)
-
 ---
 
 ## 功能特性🎉
@@ -133,5 +129,6 @@ VSCode 上的 Keil 辅助工具，与 C/C++ 插件配合使用。
 
 1. 安装 [C/C++ 插件](https://marketplace.visualstudio.com/items?itemName=ms-vscode.cpptools)
 2. 进入 Keil Assistant Community Fork 插件设置，设置好 Keil 可执行文件 `UV4.exe` 的绝对路径
-
-   ![setting](./res/preview/setting.png)
+3. 配置入口：
+   - `Ctrl+,` 打开设置，搜索 `Keil Assistant Community Fork`
+   - 或直接搜索 `KeilAssistant.C51.Uv4Path` / `KeilAssistant.MDK.Uv4Path`

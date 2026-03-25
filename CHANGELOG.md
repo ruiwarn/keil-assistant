@@ -2,6 +2,15 @@
 
 All notable changes to the "keil-assistant-new" extension will be documented in this file.
 
+## [2.5.2] - 2026-03-25
+
+### 优化改进 ✨
+
+- 移除 README 与仓库说明中引用的 Marketplace 高风险截图，避免继续展示带有 VS Code、Copilot、Live Share 等第三方界面元素的素材
+- 为中英文 README 补充明确的仓库与问题反馈链接，便于扩展市场审核核对社区分支归属
+- 新增回归测试，防止后续版本重新引入上述截图引用
+- 保持扩展 ID、发布者、`KeilAssistant.*` 配置键和运行行为不变，继续兼容老用户升级路径
+
 ## [2.5.1] - 2026-03-25
 
 ### 优化改进 ✨
